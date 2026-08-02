@@ -127,6 +127,8 @@ def _run_migrations(conn):
         conn.execute("ALTER TABLE fragrances ADD COLUMN gave_away INTEGER NOT NULL DEFAULT 0")
     if "bottles_owned" not in existing_cols:
         conn.execute("ALTER TABLE fragrances ADD COLUMN bottles_owned INTEGER NOT NULL DEFAULT 1")
+    if "fragrantica_url" not in existing_cols:
+        conn.execute("ALTER TABLE fragrances ADD COLUMN fragrantica_url TEXT")
 
 
 def init_db():
@@ -563,6 +565,24 @@ NOTE_IMAGE_MAX_WIDTH = 120
 MAX_NOTE_IMAGES_PER_SUBMIT = 15
 
 
+def _normalize_fragrantica_url(url):
+    """Normalizes a Fragrantica URL for duplicate-detection comparison — drops
+    query string/fragment (tracking params, etc.) and trailing slash, lowercases
+    the whole thing. The name on a fragrance can drift from what Fragrantica
+    calls it (you renamed it locally), but the URL of the page you imported it
+    from doesn't change, which makes it a much more reliable duplicate check."""
+    if not url:
+        return None
+    try:
+        parsed = urllib.parse.urlparse(url.strip())
+        if not parsed.scheme or not parsed.netloc:
+            return None
+        path = parsed.path.rstrip("/")
+        return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}{path.lower()}"
+    except Exception:
+        return None
+
+
 def _is_safe_remote_url(url):
     """Basic SSRF guard: only allow http(s) to public, non-local addresses."""
     try:
@@ -796,19 +816,33 @@ def edit(fragrance_id):
 @login_required
 def api_lookup():
     """Used by the Fragrantica import flow: before filling a blank Add form, the
-    page checks whether a fragrance with this brand+name already exists, so a
-    re-import can be routed to /edit instead of creating a duplicate."""
+    page checks whether a fragrance already exists, so a re-import can be
+    routed to /edit instead of creating a duplicate. Checks the Fragrantica
+    URL first — that doesn't change even if you've renamed the fragrance
+    locally — and falls back to brand+name for older entries that don't have
+    a URL stored yet."""
+    url = request.args.get("url", "").strip()
     brand = request.args.get("brand", "").strip()
     name = request.args.get("name", "").strip()
-    if not brand or not name:
-        return {"found": False}
     db = get_db()
-    row = db.execute(
-        "SELECT id FROM fragrances WHERE LOWER(TRIM(brand)) = LOWER(TRIM(?)) AND LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1",
-        (brand, name),
-    ).fetchone()
-    if row:
-        return {"found": True, "id": row["id"]}
+
+    normalized = _normalize_fragrantica_url(url)
+    if normalized:
+        rows = db.execute(
+            "SELECT id, fragrantica_url FROM fragrances WHERE fragrantica_url IS NOT NULL"
+        ).fetchall()
+        for r in rows:
+            if _normalize_fragrantica_url(r["fragrantica_url"]) == normalized:
+                return {"found": True, "id": r["id"], "matched_by": "url"}
+
+    if brand and name:
+        row = db.execute(
+            "SELECT id FROM fragrances WHERE LOWER(TRIM(brand)) = LOWER(TRIM(?)) AND LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1",
+            (brand, name),
+        ).fetchone()
+        if row:
+            return {"found": True, "id": row["id"], "matched_by": "name"}
+
     return {"found": False}
 
 
@@ -861,6 +895,8 @@ def _handle_form_submit(mode, fragrance_id, existing=None):
     except ValueError:
         bottles_owned = 1
 
+    fragrantica_url = request.form.get("fragrantica_url", "").strip() or None
+
     if not brand or not name:
         flash("Brand and Name are required.", "error")
         stub = existing or {}
@@ -870,6 +906,7 @@ def _handle_form_submit(mode, fragrance_id, existing=None):
             price=price, purchase_price=purchase_price,
             is_gift=is_gift, is_discontinued=is_discontinued, is_wishlist=is_wishlist,
             currently_owned=currently_owned, gave_away=gave_away, bottles_owned=bottles_owned,
+            fragrantica_url=fragrantica_url,
         )
         return render_template("form.html", mode=mode, f=stub), 400
 
@@ -900,12 +937,12 @@ def _handle_form_submit(mode, fragrance_id, existing=None):
             INSERT INTO fragrances
                 (brand, name, subname, image_filename, description, daynight,
                  price, purchase_price, is_gift, is_discontinued, is_wishlist,
-                 currently_owned, gave_away, bottles_owned)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 currently_owned, gave_away, bottles_owned, fragrantica_url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (brand, name, subname, image_filename, description, daynight,
              price, purchase_price, is_gift, is_discontinued, is_wishlist,
-             currently_owned, gave_away, bottles_owned),
+             currently_owned, gave_away, bottles_owned, fragrantica_url),
         )
         fragrance_id = cur.lastrowid
     else:
@@ -914,12 +951,12 @@ def _handle_form_submit(mode, fragrance_id, existing=None):
             UPDATE fragrances
             SET brand = ?, name = ?, subname = ?, image_filename = ?, description = ?, daynight = ?,
                 price = ?, purchase_price = ?, is_gift = ?, is_discontinued = ?, is_wishlist = ?,
-                currently_owned = ?, gave_away = ?, bottles_owned = ?
+                currently_owned = ?, gave_away = ?, bottles_owned = ?, fragrantica_url = ?
             WHERE id = ?
             """,
             (brand, name, subname, image_filename, description, daynight,
              price, purchase_price, is_gift, is_discontinued, is_wishlist,
-             currently_owned, gave_away, bottles_owned, fragrance_id),
+             currently_owned, gave_away, bottles_owned, fragrantica_url, fragrance_id),
         )
 
     replace_seasons(db, fragrance_id, seasons)

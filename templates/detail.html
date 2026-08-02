@@ -64,6 +64,9 @@
       {% if f['is_discontinued'] %}<sup class="discontinued-star" title="Discontinued">⭐</sup>{% endif %}
     </h1>
     {% if f['subname'] %}<p class="detail-sub">{{ f['subname'] }}</p>{% endif %}
+    {% if f['fragrantica_url'] %}
+      <a href="{{ f['fragrantica_url'] }}" target="_blank" rel="noopener noreferrer" class="fragrantica-link">View on Fragrantica ↗</a>
+    {% endif %}
 
     {% if is_admin %}
       <div class="detail-actions">

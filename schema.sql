@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS fragrances (
     currently_owned INTEGER NOT NULL DEFAULT 1,
     gave_away       INTEGER NOT NULL DEFAULT 0,
     bottles_owned   INTEGER NOT NULL DEFAULT 1,
+    fragrantica_url TEXT,
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

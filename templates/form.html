@@ -64,6 +64,12 @@
       <input type="text" id="fSubname" name="subname" placeholder="e.g. inspired by Kayali Vanilla 28" value="{{ fd.get('subname', '') }}">
     </div>
 
+    <div class="field">
+      <label for="fFragranticaUrl">Fragrantica URL <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
+      <input type="url" id="fFragranticaUrl" name="fragrantica_url" placeholder="https://www.fragrantica.com/perfume/..." value="{{ fd.get('fragrantica_url') or '' }}">
+      <div class="field-note">Auto-filled by the bookmarklet. Used to detect re-imports of the same fragrance even after you've renamed it here — paste it in manually for older entries to get the same benefit.</div>
+    </div>
+
     <div class="field-row">
       <div class="field">
         <label for="fPrice">Current Price (USD) <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>

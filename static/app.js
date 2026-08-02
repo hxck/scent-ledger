@@ -90,8 +90,9 @@ function initStatsBars() {
 }
 
 // Reads a payload left in the URL hash by the "Import from Fragrantica" bookmarklet
-// (#import=<base64 JSON>). On the Add page, first checks whether a fragrance with
-// this brand+name already exists — if so, redirects to its Edit page (carrying the
+// (#import=<base64 JSON>). On the Add page, first checks whether a fragrance
+// already exists — by Fragrantica URL first (survives local renames), falling
+// back to brand+name — and if so, redirects to its Edit page (carrying the
 // same import payload) and fills in only the gaps there instead of creating a
 // duplicate. chipControllers: { top, middle, base, tags } from initChipField().
 async function initFragranticaImport(mode, chipControllers) {
@@ -111,16 +112,17 @@ async function initFragranticaImport(mode, chipControllers) {
   }
 
   if (mode === 'add') {
-    const existingId = await findExistingFragrance(data.brand, data.name);
-    if (existingId) {
+    const match = await findExistingFragrance(data.brand, data.name, data.sourceUrl);
+    if (match) {
       // Hand off to the Edit page with the same payload still in the hash —
       // don't clear it here, that page needs to run this same import itself.
-      window.location.href = '/edit/' + existingId + hash;
+      window.location.href = '/edit/' + match.id + '?matched=' + match.matchedBy + hash;
       return;
     }
     fillAddMode(data, chipControllers);
   } else {
-    fillEditModeGaps(data, chipControllers);
+    const matchedBy = new URLSearchParams(window.location.search).get('matched');
+    fillEditModeGaps(data, chipControllers, matchedBy);
   }
 
   // Queue note icons for caching regardless of mode or which text fields ended
@@ -132,14 +134,17 @@ async function initFragranticaImport(mode, chipControllers) {
   history.replaceState(null, '', window.location.pathname + window.location.search);
 }
 
-async function findExistingFragrance(brand, name) {
-  if (!brand || !name) return null;
+async function findExistingFragrance(brand, name, url) {
+  if (!brand && !name && !url) return null;
   try {
-    const params = new URLSearchParams({ brand, name });
+    const params = new URLSearchParams();
+    if (url) params.set('url', url);
+    if (brand) params.set('brand', brand);
+    if (name) params.set('name', name);
     const resp = await fetch('/api/lookup?' + params.toString());
     if (!resp.ok) return null;
     const result = await resp.json();
-    return result && result.found ? result.id : null;
+    return result && result.found ? { id: result.id, matchedBy: result.matched_by } : null;
   } catch (err) {
     return null; // offline / lookup failed — fail open, treat this as a normal add
   }
@@ -220,6 +225,7 @@ function fillAddMode(data, chipControllers) {
   setField('fName', data.name);
   setField('fDescription', data.description);
   setField('fPrice', data.price);
+  setField('fFragranticaUrl', data.sourceUrl);
 
   if (data.notes) {
     if (data.notes.top && data.notes.top.length) chipControllers.top.setValues(data.notes.top);
@@ -243,6 +249,7 @@ function fillAddMode(data, chipControllers) {
   (data.imageUrl ? found : missing).push('image');
   (data.tags && data.tags.length ? found : missing).push('accord tags');
   (data.price ? found : missing).push('price');
+  (data.sourceUrl ? found : missing).push('Fragrantica link');
   (derived.seasons.length ? found : missing).push('season');
   (derived.daynight ? found : missing).push('day/night');
 
@@ -253,7 +260,7 @@ function fillAddMode(data, chipControllers) {
   );
 }
 
-function fillEditModeGaps(data, chipControllers) {
+function fillEditModeGaps(data, chipControllers, matchedBy) {
   const filled = [];
   const skipped = [];
 
@@ -268,6 +275,7 @@ function fillEditModeGaps(data, chipControllers) {
   fillTextIfEmpty('fName', 'name', data.name);
   fillTextIfEmpty('fDescription', 'description', data.description);
   fillTextIfEmpty('fPrice', 'price', data.price);
+  fillTextIfEmpty('fFragranticaUrl', 'Fragrantica link', data.sourceUrl);
 
   const fillTierIfEmpty = (ctrl, label, values) => {
     if (!values || !values.length) return;
@@ -298,8 +306,14 @@ function fillEditModeGaps(data, chipControllers) {
     else { skipped.push('day/night'); }
   }
 
+  const matchExplain = matchedBy === 'url'
+    ? 'Matched by its Fragrantica link'
+    : matchedBy === 'name'
+      ? 'Matched by brand + name'
+      : 'Matched an existing fragrance';
+
   showImportBanner(
-    '<strong>Matched an existing fragrance in your collection.</strong> ' +
+    '<strong>' + matchExplain + ' — this is already in your collection.</strong> ' +
     'Filled in: ' + (filled.join(', ') || 'nothing new') + '.' +
     (skipped.length ? ' Already had (left untouched): ' + skipped.join(', ') + '.' : '') +
     ' Nothing is saved yet — review below and click Save Changes.'

@@ -302,6 +302,12 @@ main.content{flex:1;min-width:0;padding:40px 44px 90px;}
   font-family:'Inter',sans-serif;font-style:normal;font-weight:400;color:var(--ink-dim);
   font-size:15.5px;margin:0 0 24px;padding-left:12px;border-left:2px solid var(--gold);
 }
+.fragrantica-link{
+  display:inline-block;font-size:12px;color:var(--ink-faint);
+  margin:0 0 18px;border-bottom:1px dotted var(--line-strong);
+  transition:color .15s, border-color .15s;
+}
+.fragrantica-link:hover{color:var(--sapphire-bright);border-color:var(--sapphire-bright);}
 .detail-actions{display:flex;gap:10px;margin-bottom:26px;}
 .btn-ghost{
   font-family:'Inter',sans-serif;font-size:12.5px;font-weight:500;background:var(--bg-glass);
@@ -437,12 +443,12 @@ main.content{flex:1;min-width:0;padding:40px 44px 90px;}
   display:block;font-family:'JetBrains Mono',monospace;font-size:10.5px;
   letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:7px;
 }
-.field input[type=text], .field input[type=password], .field input[type=number], .field textarea{
+.field input[type=text], .field input[type=password], .field input[type=number], .field input[type=url], .field textarea{
   width:100%;background:var(--bg-glass);border:1px solid var(--line-strong);
   color:var(--ink);padding:10px 12px;border-radius:var(--radius);
   font-family:'Inter',sans-serif;font-size:14px;outline:none;transition:border-color .15s, box-shadow .15s;
 }
-.field input[type=text]:focus, .field input[type=password]:focus, .field input[type=number]:focus, .field textarea:focus{border-color:var(--sapphire);box-shadow:0 0 0 3px var(--sapphire-glow-soft);}
+.field input[type=text]:focus, .field input[type=password]:focus, .field input[type=number]:focus, .field input[type=url]:focus, .field textarea:focus{border-color:var(--sapphire);box-shadow:0 0 0 3px var(--sapphire-glow-soft);}
 .field input:disabled{opacity:0.4;cursor:not-allowed;}
 .field textarea{resize:vertical;min-height:100px;line-height:1.6;}
 .field-note{font-size:11px;color:var(--ink-faint);margin-top:6px;}
@@ -696,7 +702,7 @@ table.tag-table tr:last-child td{border-bottom:none;}
   .add-btn{padding:9px 14px;}
 
   /* iOS Safari zooms the page in on focus if an input's font-size is under 16px */
-  .field input[type=text], .field input[type=password], .field input[type=number], .field textarea, .search-page-bar input, .chip-text-input{
+  .field input[type=text], .field input[type=password], .field input[type=number], .field input[type=url], .field textarea, .search-page-bar input, .chip-text-input{
     font-size:16px;
   }
 
