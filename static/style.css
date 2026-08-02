@@ -159,6 +159,23 @@ aside.sidebar{
 }
 .sidebar-empty{font-size:12.5px;color:var(--ink-faint);line-height:1.6;}
 
+/* Sidebar season color-coding: applied to an inner <span> around the name,
+   not the <a> itself, since .active/.hover already use `background` on the
+   anchor for the highlight pill — background-clip:text needs its own
+   element to avoid fighting that. */
+.season-tint-warm{
+  background:linear-gradient(120deg, #F6C99C, #E8734A);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+}
+.season-tint-cool{
+  background:linear-gradient(120deg, #BEE3F5, #5B8CFF);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+}
+.season-tint-year-round{
+  background:linear-gradient(120deg, #9BE6A8, #E8DC7E);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+}
+
 .owned-toggle{
   display:flex;align-items:center;gap:9px;
   font-size:11.5px;color:var(--ink-dim);

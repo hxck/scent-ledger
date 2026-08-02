@@ -145,27 +145,56 @@ init_db()
 # ---------------------------------------------------------------------------
 # Small query helpers
 # ---------------------------------------------------------------------------
+def _season_color_group(season_csv):
+    """Classifies a fragrance's seasons for sidebar color-coding:
+    - "warm" (Spring and/or Summer only) — creamy red-orange
+    - "cool" (Fall and/or Winter only) — chilly blue
+    - "year-round" (has at least one from each side) — green-yellow
+    - None (no seasons set at all) — no color, we don't know anything about it
+    """
+    seasons = set((season_csv or "").split(","))
+    seasons.discard("")
+    has_warm = bool(seasons & {"Spring", "Summer"})
+    has_cool = bool(seasons & {"Fall", "Winter"})
+    if has_warm and has_cool:
+        return "year-round"
+    if has_warm:
+        return "warm"
+    if has_cool:
+        return "cool"
+    return None
+
+
 def sidebar_groups():
-    """Brand -> [ {id, name} ] for the sidebar, alphabetical. Wishlist items
-    live only on the Wishlist page — they don't show here until "graduated"
-    into the collection via the Edit page toggle. Respects the "owned only"
-    display preference (session-based, works for any visitor, doesn't affect
-    the home page, search, or stats — those always show the full collection).
-    Returns the unfiltered total too, so the UI can tell "collection is
-    genuinely empty" apart from "the current filter just matches nothing"."""
+    """Brand -> [ {id, name, season_group} ] for the sidebar, alphabetical.
+    Wishlist items live only on the Wishlist page — they don't show here
+    until "graduated" into the collection via the Edit page toggle. Respects
+    the "owned only" display preference (session-based, works for any
+    visitor, doesn't affect the home page, search, or stats — those always
+    show the full collection). Returns the unfiltered total too, so the UI
+    can tell "collection is genuinely empty" apart from "the current filter
+    just matches nothing"."""
     db = get_db()
     total_unfiltered = db.execute(
         "SELECT COUNT(*) AS c FROM fragrances WHERE is_wishlist = 0"
     ).fetchone()["c"]
 
-    query = "SELECT id, brand, name FROM fragrances WHERE is_wishlist = 0"
+    query = """
+        SELECT f.id, f.brand, f.name, GROUP_CONCAT(DISTINCT s.season) AS season_csv
+        FROM fragrances f
+        LEFT JOIN seasons s ON s.fragrance_id = f.id
+        WHERE f.is_wishlist = 0
+    """
     if session.get("sidebar_owned_only"):
-        query += " AND currently_owned = 1"
-    query += " ORDER BY brand COLLATE NOCASE, name COLLATE NOCASE"
+        query += " AND f.currently_owned = 1"
+    query += " GROUP BY f.id ORDER BY f.brand COLLATE NOCASE, f.name COLLATE NOCASE"
     rows = db.execute(query).fetchall()
+
     groups = {}
     for r in rows:
-        groups.setdefault(r["brand"], []).append(r)
+        item = dict(r)
+        item["season_group"] = _season_color_group(item.pop("season_csv"))
+        groups.setdefault(item["brand"], []).append(item)
     return sorted(groups.items(), key=lambda kv: kv[0].lower()), len(rows), total_unfiltered
 
 
