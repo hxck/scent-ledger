@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}The Scent Ledger{% endblock %}
+{% block content %}
+
+{% if fragrances|length == 0 %}
+  <div class="hero">
+    <h1>The Scent Ledger</h1>
+    <p>A running record of every fragrance in your collection — brand, notes, mood, and season, all in one shelf.</p>
+  </div>
+  <div class="empty-state">
+    <h2>The shelf is empty</h2>
+    {% if is_admin %}
+      <p>Add your first fragrance to start building your archive.</p>
+      <a class="btn-primary" href="{{ url_for('add') }}" style="display:inline-block;text-decoration:none;">+ Add Fragrance</a>
+    {% else %}
+      <p>Nothing has been cataloged yet.</p>
+    {% endif %}
+  </div>
+{% else %}
+  <div class="hero">
+    <h1>The Scent Ledger</h1>
+    <p>{{ fragrances|length }} fragrance{{ 's' if fragrances|length != 1 else '' }} on the shelf. Browse below, or search the header for a specific note or mood.</p>
+  </div>
+  <div class="grid">
+    {% for f in fragrances %}
+      {% include "_card.html" %}
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% endblock %}

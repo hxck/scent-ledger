@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Search — The Scent Ledger{% endblock %}
+{% block content %}
+
+{% macro tag_url(new_q, new_tags) %}{{ url_for('search', q=new_q if new_q else None, tags=(new_tags|join(',')) if new_tags else None) }}{% endmacro %}
+
+<div class="hero" style="padding-bottom:24px;margin-bottom:24px;">
+  <h1 style="font-size:clamp(26px,3vw,36px);">Search the Shelf</h1>
+  <p>Search by name, brand, or tag — or chain tags together below.</p>
+</div>
+
+<form class="search-page-bar" method="get" action="{{ url_for('search') }}">
+  <input type="text" name="q" value="{{ q }}" placeholder="Search fragrances, brands, tags…">
+  {% for t in active_tags %}<input type="hidden" name="tags" value="{{ t }}">{% endfor %}
+  <button type="submit">Search</button>
+</form>
+
+{% if active_tags %}
+  <div class="active-filters">
+    {% for t in active_tags %}
+      {% set remaining = active_tags | reject('equalto', t) | list %}
+      <a class="tag-chip active" href="{{ tag_url(q, remaining) }}">{{ t }} ×</a>
+    {% endfor %}
+    <a class="tag-chip" href="{{ tag_url(q, []) }}">Clear tags</a>
+  </div>
+{% endif %}
+
+<details class="tag-details" {{ 'open' if active_tags else '' }}>
+  <summary class="section-label tag-details-summary">Filter by Tag{% if active_tags %} (chained — must match all selected){% endif %}</summary>
+  <div class="tag-table-wrap">
+    {% if tag_counts|length == 0 %}
+      <div style="padding:16px;color:var(--ink-faint);font-size:13px;">No tags yet — add tags when cataloging a fragrance.</div>
+    {% else %}
+      <table class="tag-table">
+        <thead><tr><th>Tag</th><th style="text-align:right;">Count</th></tr></thead>
+        <tbody>
+          {% for row in tag_counts %}
+            {% set is_selected = row['tag'] in active_tags %}
+            {% set next_tags = (active_tags | reject('equalto', row['tag']) | list) if is_selected else (active_tags + [row['tag']]) %}
+            <tr>
+              <td colspan="2">
+                <a class="tag-row-btn {{ 'selected' if is_selected else '' }}" href="{{ tag_url(q, next_tags) }}">
+                  <span>{{ row['tag'] }}</span><span class="count">{{ row['cnt'] }}</span>
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  </div>
+</details>
+
+<div class="results-count">{{ fragrances|length }} result{{ 's' if fragrances|length != 1 else '' }}</div>
+{% if fragrances|length == 0 %}
+  <div class="empty-state">
+    <h2>No matches</h2>
+    <p>Try a different search term or fewer tags.</p>
+  </div>
+{% else %}
+  <div class="grid">
+    {% for f in fragrances %}
+      {% include "_card.html" %}
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% endblock %}

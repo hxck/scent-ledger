@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}Collection Stats — The Scent Ledger{% endblock %}
+{% block content %}
+
+<div class="hero" style="padding-bottom:24px;margin-bottom:32px;">
+  <h1 style="font-size:clamp(26px,3vw,36px);">Collection Stats</h1>
+  <p>A live snapshot of your shelf — updates automatically as you add fragrances.</p>
+</div>
+
+{% if total_bottles == 0 %}
+  <div class="empty-state">
+    <h2>Nothing to show yet</h2>
+    {% if is_admin %}
+      <p>Add a few fragrances and this page fills itself in.</p>
+      <a class="btn-primary" href="{{ url_for('add') }}" style="display:inline-block;text-decoration:none;">+ Add Fragrance</a>
+    {% else %}
+      <p>Nothing has been cataloged yet.</p>
+    {% endif %}
+  </div>
+{% else %}
+
+  <div class="stat-cards">
+    <div class="stat-card">
+      <div class="stat-value">{{ total_bottles }}</div>
+      <div class="stat-label">Total Bottles</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">{{ total_houses }}</div>
+      <div class="stat-label">Houses</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">{{ total_tags }}</div>
+      <div class="stat-label">Tags in Use</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">{{ total_unique_notes }}</div>
+      <div class="stat-label">Unique Notes</div>
+    </div>
+    {% if total_spent is not none %}
+      <div class="stat-card">
+        <div class="stat-value">{{ total_spent | money }}</div>
+        <div class="stat-label">Total Spent ({{ purchased_count }}/{{ total_bottles }})</div>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="stats-grid">
+    <div class="stats-panel">
+      <div class="section-label">Top 5 Most Popular Notes</div>
+      {% if top_notes %}
+        <div class="bar-chart">
+          {% for row in top_notes %}
+            <div class="bar-row">
+              <div class="bar-label" title="{{ row.label }}">
+                {% if row.image %}<img src="{{ url_for('static', filename='uploads/' + row.image) }}" alt="" class="bar-label-icon">{% endif %}
+                <span class="bar-label-text">{{ row.label }}</span>
+              </div>
+              <div class="bar-track"><div class="bar-fill" data-target="{{ row.pct }}" style="width:0%;"></div></div>
+              <div class="bar-count">{{ row.cnt }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="stats-empty-note">No notes logged yet.</p>
+      {% endif %}
+    </div>
+
+    <div class="stats-panel">
+      <div class="section-label">Top 5 Tags</div>
+      {% if top_tags %}
+        <div class="bar-chart">
+          {% for row in top_tags %}
+            <div class="bar-row">
+              <div class="bar-label" title="{{ row.label }}">{{ row.label }}</div>
+              <div class="bar-track"><div class="bar-fill bar-fill-gold" data-target="{{ row.pct }}" style="width:0%;"></div></div>
+              <div class="bar-count">{{ row.cnt }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="stats-empty-note">No tags yet — add some when cataloging a fragrance.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stats-panel">
+      <div class="section-label">Season Distribution</div>
+      <div class="bar-chart">
+        {% for row in season_dist %}
+          <div class="bar-row">
+            <div class="bar-label">{{ row.label }}</div>
+            <div class="bar-track"><div class="bar-fill" data-target="{{ row.pct }}" style="width:0%;"></div></div>
+            <div class="bar-count">{{ row.cnt }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="stats-panel stats-panel-donut">
+      <div class="section-label">Day / Night Split</div>
+      {% if daynight_total > 0 %}
+        <div class="donut-row">
+          <div class="donut-wrap">
+            <div class="donut" style="background:{{ daynight_gradient }};"></div>
+            <div class="donut-hole">
+              <div class="donut-hole-value">{{ daynight_total }}</div>
+              <div class="donut-hole-label">tagged</div>
+            </div>
+          </div>
+          <ul class="donut-legend">
+            {% for seg in daynight_segments %}
+              <li><span class="swatch" style="background:{{ seg.color }};"></span>{{ seg.label }} <span class="donut-legend-count">{{ seg.cnt }}</span></li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% else %}
+        <p class="stats-empty-note">No Day/Night info set on any fragrance yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="stats-panel">
+    <div class="section-label">Top Houses by Bottle Count</div>
+    <div class="bar-chart">
+      {% for row in top_houses %}
+        <div class="bar-row">
+          <div class="bar-label" title="{{ row.label }}">{{ row.label }}</div>
+          <div class="bar-track"><div class="bar-fill bar-fill-gold" data-target="{{ row.pct }}" style="width:0%;"></div></div>
+          <div class="bar-count">{{ row.cnt }}</div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if most_expensive or cheapest %}
+    <div class="stats-grid">
+      {% if most_expensive %}
+        <a class="stats-panel spotlight-card" href="{{ url_for('detail', fragrance_id=most_expensive.id) }}">
+          <div class="section-label">Most Expensive <span class="section-label-note">(what you paid)</span></div>
+          <div class="spotlight-row">
+            <div class="spotlight-thumb {{ 'no-bg' if most_expensive.image_filename and most_expensive.image_filename.endswith('.png') else '' }}">
+              {% if most_expensive.image_filename %}
+                <img src="{{ url_for('static', filename='uploads/' + most_expensive.image_filename) }}" alt="">
+              {% else %}
+                <div class="ph">NO IMAGE</div>
+              {% endif %}
+            </div>
+            <div class="spotlight-info">
+              <div class="spotlight-brand">{{ most_expensive.brand }}</div>
+              <div class="spotlight-name">{{ most_expensive.name }}</div>
+              <div class="spotlight-price">${{ '%.2f'|format(most_expensive.purchase_price) }}</div>
+            </div>
+          </div>
+        </a>
+      {% endif %}
+
+      {% if cheapest %}
+        <a class="stats-panel spotlight-card" href="{{ url_for('detail', fragrance_id=cheapest.id) }}">
+          <div class="section-label">Cheapest <span class="section-label-note">(what you paid)</span></div>
+          <div class="spotlight-row">
+            <div class="spotlight-thumb {{ 'no-bg' if cheapest.image_filename and cheapest.image_filename.endswith('.png') else '' }}">
+              {% if cheapest.image_filename %}
+                <img src="{{ url_for('static', filename='uploads/' + cheapest.image_filename) }}" alt="">
+              {% else %}
+                <div class="ph">NO IMAGE</div>
+              {% endif %}
+            </div>
+            <div class="spotlight-info">
+              <div class="spotlight-brand">{{ cheapest.brand }}</div>
+              <div class="spotlight-name">{{ cheapest.name }}</div>
+              <div class="spotlight-price">${{ '%.2f'|format(cheapest.purchase_price) }}</div>
+            </div>
+          </div>
+        </a>
+      {% endif %}
+    </div>
+  {% endif %}
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>initStatsBars();</script>
+{% endblock %}

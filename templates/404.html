@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Not Found — The Scent Ledger{% endblock %}
+{% block content %}
+<div class="empty-state">
+  <h2>Nothing on this shelf</h2>
+  <p>That fragrance doesn't exist, or may have been removed.</p>
+  <a class="btn-primary" href="{{ url_for('home') }}" style="display:inline-block;text-decoration:none;">Back to shelf</a>
+</div>
+{% endblock %}

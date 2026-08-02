@@ -1,0 +1,13 @@
+Flask==3.0.3
+gunicorn==22.0.0
+Pillow==10.4.0
+Werkzeug==3.0.3
+# Loosely pinned rather than an exact version: this was written without live
+# PyPI access to confirm the current latest release. Bump/pin tighter once
+# you've confirmed a version works for you.
+rembg>=2.0.50,<3.0
+# rembg doesn't reliably pull this in as a hard dependency across all its
+# versions (it's sometimes an extra, e.g. rembg[cpu]) — listed explicitly
+# so the build doesn't depend on that. This is the CPU build; if you're
+# deploying with a GPU available, swap this for onnxruntime-gpu instead.
+onnxruntime>=1.16,<2.0

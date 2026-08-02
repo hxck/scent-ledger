@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.gitignore
+data/
+static/uploads/*
+!static/uploads/.gitkeep
+.env
+*.db
+venv/
+.venv/
+README.md

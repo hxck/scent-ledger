@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% set fd = f or {} %}
+{% set notes = fd.get('notes', {}) %}
+{% block title %}{{ 'Edit Fragrance' if mode == 'edit' else 'Add a Fragrance' }} — The Scent Ledger{% endblock %}
+{% block content %}
+
+<div class="content-narrow">
+  <h1 class="form-title">{{ 'Edit Fragrance' if mode == 'edit' else 'Add a Fragrance' }}</h1>
+  <p class="form-hint">{{ 'Update the details below.' if mode == 'edit' else 'Catalog a new bottle for the shelf.' }}</p>
+
+  {% if mode == 'add' %}
+    <div class="import-panel">
+      <div class="import-panel-text">
+        <div class="section-label" style="margin-bottom:6px;">Import from Fragrantica</div>
+        <p>Drag this to your bookmarks bar, then click it while viewing any fragrance page on Fragrantica.com — it'll open this form pre-filled. If you already have this fragrance saved, it'll take you to edit it and fill in only what's missing. Review everything before saving; extraction is best-effort.</p>
+      </div>
+      <a class="bookmarklet-btn" href="{{ bookmarklet_href }}" onclick="alert('Drag this button to your bookmarks bar instead of clicking it — it only works from a Fragrantica page.'); return false;">
+        ★ Import from Fragrantica
+      </a>
+    </div>
+  {% endif %}
+  <div id="importBanner" class="import-banner" style="display:none;"></div>
+
+  <form method="post" enctype="multipart/form-data" novalidate>
+    <input type="hidden" name="image_url" id="importedImageUrl">
+    <input type="hidden" name="notes_images_json" id="notesImagesJson">
+    <div class="field-row">
+      <div class="field">
+        <label for="fBrand">Brand / House</label>
+        <input type="text" id="fBrand" name="brand" placeholder="e.g. Maison Francis Kurkdjian" value="{{ fd.get('brand', '') }}">
+      </div>
+      <div class="field">
+        <label for="fName">Fragrance Name</label>
+        <input type="text" id="fName" name="name" placeholder="e.g. Baccarat Rouge 540" value="{{ fd.get('name', '') }}">
+      </div>
+    </div>
+
+    {% if mode == 'add' %}
+      <div class="field">
+        <label>Wishlist</label>
+        <div class="checkbox-row">
+          <label class="pill-check">
+            <input type="checkbox" id="fAddToWishlist" name="is_wishlist" value="1" {{ 'checked' if (prefill_wishlist or fd.get('is_wishlist')) else '' }}>
+            <span>💝 Add to Wishlist instead</span>
+          </label>
+        </div>
+        <div class="field-note">Wishlist items stay off the sidebar, search, and stats until moved into the collection from the Edit page.</div>
+      </div>
+    {% elif mode == 'edit' and fd.get('is_wishlist') %}
+      <div class="field">
+        <label>Wishlist</label>
+        <div class="checkbox-row">
+          <label class="pill-check">
+            <input type="checkbox" id="fOnWishlist" name="is_wishlist" value="1" checked>
+            <span>💝 On Wishlist</span>
+          </label>
+        </div>
+        <div class="field-note">Uncheck and save to move this into your main collection.</div>
+      </div>
+    {% endif %}
+
+    <div class="field">
+      <label for="fSubname">Subname / Inspired By <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
+      <input type="text" id="fSubname" name="subname" placeholder="e.g. inspired by Kayali Vanilla 28" value="{{ fd.get('subname', '') }}">
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="fPrice">Current Price (USD) <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
+        <input type="number" id="fPrice" name="price" step="0.01" min="0" placeholder="e.g. 145.00" value="{{ '' if fd.get('price') is none else fd.get('price') }}">
+        <div class="field-note">What it's listed for now (e.g. from Fragrantica).</div>
+      </div>
+      <div class="field">
+        <label for="fPurchasePrice">What You Paid (USD) <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
+        <input type="number" id="fPurchasePrice" name="purchase_price" step="0.01" min="0" placeholder="e.g. 98.50" value="{{ '' if fd.get('purchase_price') is none else fd.get('purchase_price') }}">
+        <div class="field-note">Your actual purchase price — never auto-filled by import.</div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Flags <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
+      <div class="checkbox-row">
+        <label class="pill-check">
+          <input type="checkbox" id="fIsGift" name="is_gift" value="1" {{ 'checked' if fd.get('is_gift') else '' }}>
+          <span>🎁 This was a gift</span>
+        </label>
+        <label class="pill-check">
+          <input type="checkbox" id="fIsDiscontinued" name="is_discontinued" value="1" {{ 'checked' if fd.get('is_discontinued') else '' }}>
+          <span>⭐ Discontinued</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Ownership</label>
+      <div class="checkbox-row">
+        <label class="pill-check">
+          <input type="checkbox" id="fCurrentlyOwned" name="currently_owned" value="1" {{ 'checked' if fd.get('currently_owned', true) else '' }}>
+          <span>Currently Owned</span>
+        </label>
+        <label class="pill-check">
+          <input type="checkbox" id="fGaveAway" name="gave_away" value="1" {{ 'checked' if fd.get('gave_away') else '' }}>
+          <span>Gave Away</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="fBottlesOwned">Bottles Owned <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(lifetime total, including any you no longer have)</span></label>
+      <input type="number" id="fBottlesOwned" name="bottles_owned" min="0" step="1" style="max-width:120px;" value="{{ fd.get('bottles_owned', 1) }}">
+    </div>
+
+    <div class="field">
+      <label>Bottle Photo</label>
+      <div class="upload-box">
+        <div class="upload-preview {{ 'no-bg' if fd.get('image_filename') and fd['image_filename'].endswith('.png') else '' }}" id="uploadPreview">
+          {% if fd.get('image_filename') %}
+            <img src="{{ url_for('static', filename='uploads/' + fd['image_filename']) }}">
+          {% else %}
+            <div class="ph">NO IMAGE</div>
+          {% endif %}
+        </div>
+        <div>
+          <input type="file" id="fImage" name="image" accept="image/*">
+          <div class="field-note">JPG, PNG, or WEBP. Will be resized automatically.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="fDescription">Description</label>
+      <textarea id="fDescription" name="description" placeholder="Tasting notes, occasions, how it wears...">{{ fd.get('description', '') }}</textarea>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label>Season</label>
+        <div class="checkbox-row">
+          {% for s in ['Spring', 'Summer', 'Fall', 'Winter'] %}
+            <label class="pill-check">
+              <input type="checkbox" name="seasons" value="{{ s }}" {{ 'checked' if s in fd.get('seasons', []) else '' }}>
+              <span>{{ s }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="field">
+        <label>Day / Night</label>
+        <div class="radio-row">
+          {% for d in ['Day', 'Night', 'Both'] %}
+            <label class="pill-check">
+              <input type="radio" name="daynight" value="{{ d }}" {{ 'checked' if fd.get('daynight') == d else '' }}>
+              <span>{{ d }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Note Breakdown</label>
+      <div class="notes-tiers">
+        <div class="tier-box">
+          <div class="tier-title">Top Notes</div>
+          <div class="chip-input-wrap" id="tierTopChips"></div>
+          <input type="hidden" name="notes_top_csv" id="tierTopHidden">
+          <input type="text" class="chip-text-input" id="tierTopText" placeholder="Type a note, press Enter">
+        </div>
+        <div class="tier-box">
+          <div class="tier-title">Middle Notes</div>
+          <div class="chip-input-wrap" id="tierMiddleChips"></div>
+          <input type="hidden" name="notes_middle_csv" id="tierMiddleHidden">
+          <input type="text" class="chip-text-input" id="tierMiddleText" placeholder="Type a note, press Enter">
+        </div>
+        <div class="tier-box">
+          <div class="tier-title">Base Notes</div>
+          <div class="chip-input-wrap" id="tierBaseChips"></div>
+          <input type="hidden" name="notes_base_csv" id="tierBaseHidden">
+          <input type="text" class="chip-text-input" id="tierBaseText" placeholder="Type a note, press Enter">
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Tags</label>
+      <div class="tier-box">
+        <div class="chip-input-wrap" id="tagsChips"></div>
+        <input type="hidden" name="tags_csv" id="tagsHidden">
+        <input type="text" class="chip-text-input" id="tagsText" placeholder="Type a tag, press Enter (e.g. gourmand, date-night, signature)">
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn-primary">{{ 'Save Changes' if mode == 'edit' else 'Save Fragrance' }}</button>
+      <a class="btn-ghost" href="{{ url_for('detail', fragrance_id=fd['id']) if mode == 'edit' else url_for('home') }}" style="display:inline-block;">Cancel</a>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById('fImage').addEventListener('change', function (e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const preview = document.getElementById('uploadPreview');
+    preview.classList.toggle('no-bg', file.type === 'image/png');
+    const reader = new FileReader();
+    reader.onload = function (ev) {
+      preview.innerHTML = '<img src="' + ev.target.result + '">';
+    };
+    reader.readAsDataURL(file);
+  });
+
+  const giftCheckbox = document.getElementById('fIsGift');
+  const purchasePriceInput = document.getElementById('fPurchasePrice');
+  function syncGiftState() {
+    purchasePriceInput.disabled = giftCheckbox.checked;
+    if (giftCheckbox.checked) purchasePriceInput.value = '';
+  }
+  giftCheckbox.addEventListener('change', syncGiftState);
+  syncGiftState(); // apply immediately in case Gift is already checked (edit mode)
+
+  const chipTop = initChipField('tierTopHidden', 'tierTopChips', 'tierTopText', {{ (notes.get('top', []) | note_texts) | tojson }});
+  const chipMiddle = initChipField('tierMiddleHidden', 'tierMiddleChips', 'tierMiddleText', {{ (notes.get('middle', []) | note_texts) | tojson }});
+  const chipBase = initChipField('tierBaseHidden', 'tierBaseChips', 'tierBaseText', {{ (notes.get('base', []) | note_texts) | tojson }});
+  const chipTags = initChipField('tagsHidden', 'tagsChips', 'tagsText', {{ fd.get('tags', []) | tojson }});
+
+  initFragranticaImport('{{ mode }}', { top: chipTop, middle: chipMiddle, base: chipBase, tags: chipTags });
+</script>
+{% endblock %}

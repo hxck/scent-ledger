@@ -1,0 +1,13 @@
+<a class="card" href="{{ url_for('detail', fragrance_id=f['id']) }}">
+  <div class="thumb {{ 'no-bg' if f['image_filename'] and f['image_filename'].endswith('.png') else '' }}">
+    {% if f['image_filename'] %}
+      <img src="{{ url_for('static', filename='uploads/' + f['image_filename']) }}" alt="{{ f['name'] }}">
+    {% else %}
+      <div class="ph">NO IMAGE</div>
+    {% endif %}
+  </div>
+  <div class="meta">
+    <div class="cbrand">{{ f['brand'] }}</div>
+    <div class="cname">{{ f['name'] }}</div>
+  </div>
+</a>

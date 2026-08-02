@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Login — The Scent Ledger{% endblock %}
+{% block content %}
+
+<div class="content-narrow" style="max-width:400px;">
+  <h1 class="form-title">Admin Login</h1>
+  <p class="form-hint">Log in to add, edit, or delete fragrances. Browsing the collection doesn't require this.</p>
+
+  <form method="post" novalidate>
+    <input type="hidden" name="next" value="{{ next }}">
+
+    <div class="field">
+      <label for="fUsername">Username</label>
+      <input type="text" id="fUsername" name="username" autocomplete="username" autofocus>
+    </div>
+
+    <div class="field">
+      <label for="fPassword">Password</label>
+      <input type="password" id="fPassword" name="password" autocomplete="current-password">
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn-primary">Log In</button>
+      <a class="btn-ghost" href="{{ url_for('home') }}" style="display:inline-block;">Cancel</a>
+    </div>
+  </form>
+</div>
+
+{% endblock %}

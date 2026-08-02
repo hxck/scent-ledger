@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Wishlist — The Scent Ledger{% endblock %}
+{% block content %}
+
+{% if fragrances|length == 0 %}
+  <div class="hero">
+    <h1>Wishlist</h1>
+    <p>Fragrances you're eyeing but haven't picked up yet — kept separate from the main collection until you decide to add them for real.</p>
+  </div>
+  <div class="empty-state">
+    <h2>Nothing on the wishlist yet</h2>
+    {% if is_admin %}
+      <p>Add a fragrance and check "Add to Wishlist" to start one.</p>
+      <a class="btn-primary" href="{{ url_for('add', wishlist=1) }}" style="display:inline-block;text-decoration:none;">+ Add to Wishlist</a>
+    {% else %}
+      <p>Nothing has been added yet.</p>
+    {% endif %}
+  </div>
+{% else %}
+  <div class="hero">
+    <h1>Wishlist</h1>
+    <p>{{ fragrances|length }} fragrance{{ 's' if fragrances|length != 1 else '' }} on the wishlist.
+      {% if is_admin %}Edit one and uncheck "On Wishlist" to move it into your collection.{% endif %}</p>
+  </div>
+  <div class="grid">
+    {% for f in fragrances %}
+      {% include "_card.html" %}
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% endblock %}

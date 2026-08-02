@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}{{ f['name'] }} — The Scent Ledger{% endblock %}
+{% block content %}
+
+<div class="detail-grid">
+  <div class="detail-image-col">
+    <div class="detail-image {{ 'no-bg' if f['image_filename'] and f['image_filename'].endswith('.png') else '' }}">
+      {% if f['image_filename'] %}
+        <img src="{{ url_for('static', filename='uploads/' + f['image_filename']) }}" alt="{{ f['name'] }}">
+      {% else %}
+        <div class="ph">NO IMAGE</div>
+      {% endif %}
+    </div>
+
+    <div class="ownership-panel">
+      <span class="ownership-badge {{ 'owned' if f['currently_owned'] else 'not-owned' }}">
+        {{ '✓ Currently Owned' if f['currently_owned'] else '✗ Not Currently Owned' }}
+      </span>
+      {% if not f['currently_owned'] %}
+        <div class="ownership-detail">Bottles owned: {{ f['bottles_owned'] }}</div>
+      {% endif %}
+      {% if f['gave_away'] %}
+        <div class="ownership-detail ownership-gave-away">Gave this one away</div>
+      {% endif %}
+    </div>
+
+    {% if f['price'] is not none or f['purchase_price'] is not none or f['is_gift'] %}
+      <div class="price-panel">
+        {% if f['price'] is not none %}
+          <div class="price-row">
+            <span class="price-row-label">Current</span>
+            <span class="price-row-value">${{ '%.2f'|format(f['price']) }}</span>
+          </div>
+        {% endif %}
+        {% if f['is_gift'] %}
+          <div class="price-row">
+            <span class="price-row-label">You Paid</span>
+            <span class="price-row-value price-row-gift">🎁 Gift</span>
+          </div>
+        {% elif f['purchase_price'] is not none %}
+          <div class="price-row">
+            <span class="price-row-label">You Paid</span>
+            <span class="price-row-value">${{ '%.2f'|format(f['purchase_price']) }}</span>
+          </div>
+        {% endif %}
+        {% if f['price'] is not none and f['purchase_price'] is not none and not f['is_gift'] %}
+          {% set diff = f['price'] - f['purchase_price'] %}
+          {% set pct = (diff / f['purchase_price'] * 100) if f['purchase_price'] else 0 %}
+          {% set sign = '+' if diff > 0 else ('-' if diff < 0 else '') %}
+          <div class="price-diff {{ 'price-diff-up' if diff > 0 else ('price-diff-down' if diff < 0 else 'price-diff-flat') }}">
+            {{ sign }}${{ '%.2f'|format(diff|abs) }}
+            <span class="price-diff-pct">({{ sign }}{{ '%.1f'|format(pct|abs) }}%)</span>
+          </div>
+        {% elif f['price'] is not none and f['purchase_price'] is none and not f['is_gift'] %}
+          <div class="price-panel-note">Reference price from Fragrantica — actual cost varies.</div>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+  <div>
+    <div class="eyebrow detail-eyebrow">{{ f['brand'] }}</div>
+    <h1 class="detail-title">
+      {{ f['name'] }}
+      {% if f['is_discontinued'] %}<sup class="discontinued-star" title="Discontinued">⭐</sup>{% endif %}
+    </h1>
+    {% if f['subname'] %}<p class="detail-sub">{{ f['subname'] }}</p>{% endif %}
+
+    {% if is_admin %}
+      <div class="detail-actions">
+        <a class="btn-ghost" href="{{ url_for('edit', fragrance_id=f['id']) }}" style="display:inline-block;">Edit</a>
+        <form action="{{ url_for('delete', fragrance_id=f['id']) }}" method="post"
+              onsubmit="return confirm('Remove &quot;{{ f['name'] }}&quot; by {{ f['brand'] }} from your collection? This can\'t be undone.');">
+          <button type="submit" class="btn-ghost danger">Delete</button>
+        </form>
+      </div>
+    {% endif %}
+
+    <div class="badges-row">
+      {% if f['is_wishlist'] %}<span class="badge wishlist">💝 Wishlist</span>{% endif %}
+      {% for s in f['seasons'] %}<span class="badge season">{{ s }}</span>{% endfor %}
+      {% if f['daynight'] %}<span class="badge daynight">{{ f['daynight'] }}</span>{% endif %}
+    </div>
+
+    {% if f['description'] %}
+      <div class="section-label">Description</div>
+      <p class="description">{{ f['description'] }}</p>
+    {% endif %}
+
+    <div class="section-label">Note Breakdown</div>
+    <div class="pyramid">
+      <div class="pyr-tier pyr-top">
+        <div class="tier-label">Top</div>
+        <div class="tier-notes">
+          {% if f['notes']['top'] %}
+            <div class="note-pill-list">
+              {% for n in f['notes']['top'] %}
+                <span class="note-pill {{ 'has-image' if n.image else '' }}">
+                  {% if n.image %}<img src="{{ url_for('static', filename='uploads/' + n.image) }}" alt="">{% endif %}
+                  {{ n.text }}
+                </span>
+              {% endfor %}
+            </div>
+          {% else %}<span class="none">not specified</span>{% endif %}
+        </div>
+      </div>
+      <div class="pyr-tier pyr-mid">
+        <div class="tier-label">Middle</div>
+        <div class="tier-notes">
+          {% if f['notes']['middle'] %}
+            <div class="note-pill-list">
+              {% for n in f['notes']['middle'] %}
+                <span class="note-pill {{ 'has-image' if n.image else '' }}">
+                  {% if n.image %}<img src="{{ url_for('static', filename='uploads/' + n.image) }}" alt="">{% endif %}
+                  {{ n.text }}
+                </span>
+              {% endfor %}
+            </div>
+          {% else %}<span class="none">not specified</span>{% endif %}
+        </div>
+      </div>
+      <div class="pyr-tier pyr-base">
+        <div class="tier-label">Base</div>
+        <div class="tier-notes">
+          {% if f['notes']['base'] %}
+            <div class="note-pill-list">
+              {% for n in f['notes']['base'] %}
+                <span class="note-pill {{ 'has-image' if n.image else '' }}">
+                  {% if n.image %}<img src="{{ url_for('static', filename='uploads/' + n.image) }}" alt="">{% endif %}
+                  {{ n.text }}
+                </span>
+              {% endfor %}
+            </div>
+          {% else %}<span class="none">not specified</span>{% endif %}
+        </div>
+      </div>
+    </div>
+
+    {% if f['tags'] %}
+      <div class="section-label">Tags</div>
+      <div class="tag-chip-list">
+        {% for t in f['tags'] %}
+          <a class="tag-chip" href="{{ url_for('search', tags=t) }}">{{ t }}</a>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
