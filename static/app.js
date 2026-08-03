@@ -201,9 +201,18 @@ function getCheckedSeasons() {
   return Array.prototype.slice.call(document.querySelectorAll('input[name=seasons]:checked')).map((el) => el.value);
 }
 function setSeasonCheckboxes(names) {
-  names.forEach((name) => {
+  // Always start from a clean slate — never just layer checks on top of
+  // whatever's already checked. Stale state (browser form-autofill restoring
+  // a previous fill, a leftover selection from before this function ran)
+  // would otherwise silently survive alongside whatever we're setting now.
+  document.querySelectorAll('input[name=seasons]').forEach((el) => { el.checked = false; });
+  (names || []).forEach((name) => {
     const el = document.querySelector('input[name=seasons][value="' + name + '"]');
-    if (el) el.checked = true;
+    if (el) {
+      el.checked = true;
+    } else {
+      console.warn('setSeasonCheckboxes: no checkbox found with value="' + name + '" — check the form\'s season value attributes match.');
+    }
   });
 }
 function getCheckedDaynight() {
@@ -211,9 +220,17 @@ function getCheckedDaynight() {
   return el ? el.value : '';
 }
 function setDaynightRadio(value) {
+  // Same reasoning as setSeasonCheckboxes: always clear first, even if we
+  // end up not setting anything (value is empty), so a stale prior selection
+  // never survives an import fill it wasn't part of.
+  document.querySelectorAll('input[name=daynight]').forEach((el) => { el.checked = false; });
   if (!value) return;
   const el = document.querySelector('input[name=daynight][value="' + value + '"]');
-  if (el) el.checked = true;
+  if (el) {
+    el.checked = true;
+  } else {
+    console.warn('setDaynightRadio: no radio found with value="' + value + '" — check the form\'s day/night value attributes match.');
+  }
 }
 
 function fillAddMode(data, chipControllers) {
@@ -236,8 +253,11 @@ function fillAddMode(data, chipControllers) {
   if (data.imageUrl) setImagePreview(data.imageUrl);
 
   const derived = deriveSeasonsAndDaynight(data.whenToWear);
-  if (derived.seasons.length) setSeasonCheckboxes(derived.seasons);
-  if (derived.daynight) setDaynightRadio(derived.daynight);
+  // Unconditional on purpose (unlike the edit-mode gap-fill below) — this is
+  // a fresh fill, so it should always clear any stale season/day-night state
+  // rather than only doing so when there's something new to apply.
+  setSeasonCheckboxes(derived.seasons);
+  setDaynightRadio(derived.daynight);
 
   const found = [];
   const missing = [];
