@@ -270,6 +270,10 @@ main.content{flex:1;min-width:0;padding:40px 44px 90px;}
   text-transform:uppercase;color:var(--gold);margin-bottom:4px;
 }
 .card .meta .cname{font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:600;line-height:1.25;}
+.card .meta .csubname{
+  font-family:'Inter',sans-serif;font-size:11.5px;font-style:italic;color:var(--ink-faint);
+  margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
 
 .empty-state{
   text-align:center;padding:70px 20px;border:1px dashed var(--line-strong);border-radius:var(--radius);
