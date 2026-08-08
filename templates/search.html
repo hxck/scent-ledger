@@ -6,11 +6,11 @@
 
 <div class="hero" style="padding-bottom:24px;margin-bottom:24px;">
   <h1 style="font-size:clamp(26px,3vw,36px);">Search the Shelf</h1>
-  <p>Search by name, brand, or tag — or chain tags together below.</p>
+  <p>Search by name, brand, tag, or note — or chain filters together below.</p>
 </div>
 
 <form class="search-page-bar" method="get" action="{{ url_for('search') }}">
-  <input type="text" name="q" value="{{ q }}" placeholder="Search fragrances, brands, tags…">
+  <input type="text" name="q" value="{{ q }}" placeholder="Search fragrances, brands, tags, notes…">
   {% for t in active_tags %}<input type="hidden" name="tags" value="{{ t }}">{% endfor %}
   <button type="submit">Search</button>
 </form>
@@ -26,29 +26,29 @@
 {% endif %}
 
 <details class="tag-details" {{ 'open' if active_tags else '' }}>
-  <summary class="section-label tag-details-summary">Filter by Tag{% if active_tags %} (chained — must match all selected){% endif %}</summary>
-  <div class="tag-table-wrap">
-    {% if tag_counts|length == 0 %}
-      <div style="padding:16px;color:var(--ink-faint);font-size:13px;">No tags yet — add tags when cataloging a fragrance.</div>
-    {% else %}
-      <table class="tag-table">
-        <thead><tr><th>Tag</th><th style="text-align:right;">Count</th></tr></thead>
-        <tbody>
-          {% for row in tag_counts %}
-            {% set is_selected = row['tag'] in active_tags %}
-            {% set next_tags = (active_tags | reject('equalto', row['tag']) | list) if is_selected else (active_tags + [row['tag']]) %}
-            <tr>
-              <td colspan="2">
-                <a class="tag-row-btn {{ 'selected' if is_selected else '' }}" href="{{ tag_url(q, next_tags) }}">
-                  <span>{{ row['tag'] }}</span><span class="count">{{ row['cnt'] }}</span>
-                </a>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% endif %}
-  </div>
+  <summary class="section-label tag-details-summary">Filter by Tag or Note{% if active_tags %} (chained — must match all selected){% endif %}</summary>
+  {% if search_terms|length == 0 %}
+    <div style="padding:16px;color:var(--ink-faint);font-size:13px;">Nothing to filter by yet — tags and notes will show up here as you catalog fragrances.</div>
+  {% else %}
+    <div class="tag-cloud">
+      {% for row in search_terms %}
+        {% set is_selected = row['term'] in active_tags %}
+        {% set next_tags = (active_tags | reject('equalto', row['term']) | list) if is_selected else (active_tags + [row['term']]) %}
+        <div class="tag-pill-wrap {{ 'selected' if is_selected else '' }}">
+          <a class="tag-pill" href="{{ tag_url(q, next_tags) }}">
+            <span>{{ row['term'] }}</span><span class="count">{{ row['cnt'] }}</span>
+          </a>
+          {% if is_admin and row['tag_id'] %}
+            <form method="post" action="{{ url_for('delete_tag', tag_id=row['tag_id']) }}" class="tag-delete-form"
+                  onsubmit="return confirm('Delete the tag &quot;{{ row['term'] }}&quot;? This removes it from every fragrance that has it — fragrances themselves aren\'t affected.');">
+              <input type="hidden" name="next" value="{{ request.full_path }}">
+              <button type="submit" class="tag-delete-btn" aria-label="Delete tag {{ row['term'] }}" title="Delete tag">×</button>
+            </form>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
 </details>
 
 <div class="results-count">{{ fragrances|length }} result{{ 's' if fragrances|length != 1 else '' }}</div>

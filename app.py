@@ -215,7 +215,10 @@ def inject_sidebar():
 
 def get_all_fragrances_light(wishlist=False, respect_owned_filter=False):
     """Used for the home grid, search results, and the wishlist page:
-    brand/name/subname/tags/thumb. The collection and the wishlist are
+    brand/name/subname/thumb, plus a combined `tags` list used for search
+    matching only (never rendered directly on a card) — this includes both
+    real tags AND every note on the fragrance, so search-by-note works the
+    same way search-by-tag does. The collection and the wishlist are
     mutually exclusive sets — this never mixes them.
     respect_owned_filter=True additionally applies the sidebar's "owned only"
     session preference (only meaningful for the non-wishlist collection) —
@@ -224,10 +227,12 @@ def get_all_fragrances_light(wishlist=False, respect_owned_filter=False):
     db = get_db()
     query = """
         SELECT f.id, f.brand, f.name, f.subname, f.image_filename,
-               GROUP_CONCAT(DISTINCT t.name) AS tag_list
+               GROUP_CONCAT(DISTINCT t.name) AS tag_list,
+               GROUP_CONCAT(DISTINCT n.note_text) AS note_list
         FROM fragrances f
         LEFT JOIN fragrance_tags ft ON ft.fragrance_id = f.id
         LEFT JOIN tags t ON t.id = ft.tag_id
+        LEFT JOIN notes n ON n.fragrance_id = f.id
         WHERE f.is_wishlist = ?
     """
     if respect_owned_filter and not wishlist and session.get("sidebar_owned_only"):
@@ -237,7 +242,11 @@ def get_all_fragrances_light(wishlist=False, respect_owned_filter=False):
     result = []
     for r in rows:
         d = dict(r)
-        d["tags"] = d["tag_list"].split(",") if d["tag_list"] else []
+        tag_list = d.pop("tag_list")
+        note_list = d.pop("note_list")
+        tags = tag_list.split(",") if tag_list else []
+        notes = note_list.split(",") if note_list else []
+        d["tags"] = [t.strip() for t in (tags + notes) if t.strip()]
         result.append(d)
     return result
 
@@ -302,6 +311,63 @@ def get_tag_counts():
         """
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+def get_search_term_counts():
+    """The search page's filter cloud: real tags AND every note in the
+    collection, unified into one searchable term list. A tag and a note that
+    share a name (case-insensitive) — e.g. tag "Vanilla" on one fragrance,
+    note "vanilla" on another — collapse into a single term rather than
+    double-counting a fragrance that matches both. Each entry carries the
+    real tag's id when there is one (only those get a delete button in the
+    UI; a note isn't a deletable row the way a tag is)."""
+    db = get_db()
+
+    tag_rows = db.execute("SELECT id, name FROM tags").fetchall()
+    tag_id_by_key = {row["name"].strip().lower(): row["id"] for row in tag_rows}
+
+    rows = db.execute(
+        """
+        SELECT f.id AS fragrance_id,
+               GROUP_CONCAT(DISTINCT t.name) AS tag_list,
+               GROUP_CONCAT(DISTINCT n.note_text) AS note_list
+        FROM fragrances f
+        LEFT JOIN fragrance_tags ft ON ft.fragrance_id = f.id
+        LEFT JOIN tags t ON t.id = ft.tag_id
+        LEFT JOIN notes n ON n.fragrance_id = f.id
+        WHERE f.is_wishlist = 0
+        GROUP BY f.id
+        """
+    ).fetchall()
+
+    terms = {}  # lowercase key -> {"display": str, "ids": set(), "tag_id": int|None}
+    for row in rows:
+        frag_terms = set()
+        if row["tag_list"]:
+            frag_terms.update(x.strip() for x in row["tag_list"].split(","))
+        if row["note_list"]:
+            frag_terms.update(x.strip() for x in row["note_list"].split(","))
+        for text in frag_terms:
+            if not text:
+                continue
+            key = text.lower()
+            if key not in terms:
+                terms[key] = {"display": text, "ids": set(), "tag_id": tag_id_by_key.get(key)}
+            terms[key]["ids"].add(row["fragrance_id"])
+
+    # Tags currently attached to nothing (e.g. mid-edit, before the orphan
+    # sweep runs) still show up so they're reachable to delete by hand,
+    # rather than silently vanishing from view.
+    for row in tag_rows:
+        key = row["name"].strip().lower()
+        if key not in terms:
+            terms[key] = {"display": row["name"], "ids": set(), "tag_id": row["id"]}
+
+    result = [
+        {"term": v["display"], "cnt": len(v["ids"]), "tag_id": v["tag_id"]}
+        for v in terms.values()
+    ]
+    return sorted(result, key=lambda r: r["term"].lower())
 
 
 # ---------------------------------------------------------------------------
@@ -705,6 +771,15 @@ def upsert_tags(db, fragrance_id, tag_names):
         )
 
 
+def _prune_orphaned_tags(db):
+    """Removes any tag no longer attached to any fragrance. Called after
+    editing a fragrance's tags (a save can remove the last use of a tag) and
+    after deleting a fragrance outright — keeps the tag list from silently
+    accumulating unused entries over time instead of requiring manual
+    cleanup for every edit."""
+    db.execute("DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM fragrance_tags)")
+
+
 def replace_seasons(db, fragrance_id, seasons):
     db.execute("DELETE FROM seasons WHERE fragrance_id = ?", (fragrance_id,))
     for s in seasons:
@@ -965,6 +1040,7 @@ def _handle_form_submit(mode, fragrance_id, existing=None):
     replace_seasons(db, fragrance_id, seasons)
     replace_notes(db, fragrance_id, notes)
     upsert_tags(db, fragrance_id, tags)
+    _prune_orphaned_tags(db)
 
     notes_images_raw = request.form.get("notes_images_json", "").strip()
     if notes_images_raw:
@@ -988,9 +1064,23 @@ def delete(fragrance_id):
         abort(404)
     delete_image(frag["image_filename"])
     db.execute("DELETE FROM fragrances WHERE id = ?", (fragrance_id,))
+    _prune_orphaned_tags(db)
     db.commit()
     flash("Fragrance removed.", "success")
     return redirect(url_for("home"))
+
+
+@app.route("/tags/<int:tag_id>/delete", methods=["POST"])
+@login_required
+def delete_tag(tag_id):
+    db = get_db()
+    row = db.execute("SELECT name FROM tags WHERE id = ?", (tag_id,)).fetchone()
+    if row is None:
+        abort(404)
+    db.execute("DELETE FROM tags WHERE id = ?", (tag_id,))  # cascades to fragrance_tags
+    db.commit()
+    flash(f'Removed tag "{row["name"]}".', "success")
+    return redirect(_safe_next_url(request.form.get("next", "")))
 
 
 @app.route("/wishlist")
@@ -1028,19 +1118,20 @@ def search():
         ]
 
     if active_tags:
+        active_tags_lower = [t.lower() for t in active_tags]
         fragrances = [
             f for f in fragrances
-            if all(t in f["tags"] for t in active_tags)
+            if all(t in [x.lower() for x in f["tags"]] for t in active_tags_lower)
         ]
 
-    tag_counts = get_tag_counts()
+    search_terms = get_search_term_counts()
 
     return render_template(
         "search.html",
         fragrances=fragrances,
         q=q,
         active_tags=active_tags,
-        tag_counts=tag_counts,
+        search_terms=search_terms,
     )
 
 
