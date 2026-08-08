@@ -213,24 +213,27 @@ def inject_sidebar():
     }
 
 
-def get_all_fragrances_light(wishlist=False):
+def get_all_fragrances_light(wishlist=False, respect_owned_filter=False):
     """Used for the home grid, search results, and the wishlist page:
     brand/name/subname/tags/thumb. The collection and the wishlist are
-    mutually exclusive sets — this never mixes them."""
+    mutually exclusive sets — this never mixes them.
+    respect_owned_filter=True additionally applies the sidebar's "owned only"
+    session preference (only meaningful for the non-wishlist collection) —
+    opt-in per caller so this stays in sync with the sidebar specifically
+    where that's wanted, without silently changing other listings."""
     db = get_db()
-    rows = db.execute(
-        """
+    query = """
         SELECT f.id, f.brand, f.name, f.subname, f.image_filename,
                GROUP_CONCAT(DISTINCT t.name) AS tag_list
         FROM fragrances f
         LEFT JOIN fragrance_tags ft ON ft.fragrance_id = f.id
         LEFT JOIN tags t ON t.id = ft.tag_id
         WHERE f.is_wishlist = ?
-        GROUP BY f.id
-        ORDER BY f.brand COLLATE NOCASE, f.name COLLATE NOCASE
-        """,
-        (1 if wishlist else 0,),
-    ).fetchall()
+    """
+    if respect_owned_filter and not wishlist and session.get("sidebar_owned_only"):
+        query += " AND f.currently_owned = 1"
+    query += " GROUP BY f.id ORDER BY f.brand COLLATE NOCASE, f.name COLLATE NOCASE"
+    rows = db.execute(query, (1 if wishlist else 0,)).fetchall()
     result = []
     for r in rows:
         d = dict(r)
@@ -732,7 +735,7 @@ def healthz():
 
 @app.route("/")
 def home():
-    fragrances = get_all_fragrances_light()
+    fragrances = get_all_fragrances_light(respect_owned_filter=True)
     return render_template("index.html", fragrances=fragrances)
 
 
