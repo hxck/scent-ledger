@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Shelves — The Scent Ledger{% endblock %}
+{% block breadcrumbs %}<span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Shelves</span>{% endblock %}
 {% block content %}
 
 <div class="hero" style="padding-bottom:24px;margin-bottom:24px;">
@@ -20,7 +21,10 @@
   <div class="shelf-list">
     {% for s in shelves %}
       <a class="shelf-card" href="{{ url_for('shelf_detail', shelf_id=s['id']) }}">
-        <div class="shelf-card-name">{% if s['icon'] %}<i class="{{ s['icon'] }} shelf-icon"></i>{% endif %}{{ s['name'] }}</div>
+        <div class="shelf-card-name">
+          {% if s['icon'] %}<i class="{{ s['icon'] }} shelf-icon"></i>{% endif %}{{ s['name'] }}
+          {% if s['is_private'] %}<span class="shelf-private-badge" title="Private — hidden from public visitors">🔒</span>{% endif %}
+        </div>
         <div class="shelf-card-count">{{ s['cnt'] }} fragrance{{ 's' if s['cnt'] != 1 else '' }}</div>
       </a>
     {% endfor %}

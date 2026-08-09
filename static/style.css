@@ -265,6 +265,16 @@ main.content{flex:1;min-width:0;padding:40px 44px 90px;}
 .content-narrow{max-width:900px;}
 
 /* ---------- FLASH ---------- */
+.breadcrumbs{
+  display:flex;align-items:center;flex-wrap:wrap;gap:7px;
+  margin-bottom:22px;font-family:'JetBrains Mono',monospace;font-size:11.5px;
+  color:var(--ink-faint);
+}
+.breadcrumbs a{color:var(--ink-dim);transition:color .15s;}
+.breadcrumbs a:hover{color:var(--sapphire-bright);}
+.breadcrumb-sep{color:var(--ink-faint);opacity:0.5;}
+.breadcrumb-current{color:var(--ink);}
+
 .flash-wrap{margin-bottom:24px;}
 .flash{
   padding:11px 16px;border-radius:var(--radius);font-size:13px;margin-bottom:10px;
@@ -459,6 +469,7 @@ main.content{flex:1;min-width:0;padding:40px 44px 90px;}
 .shelf-card:hover{border-color:var(--gold);transform:translateY(-2px);box-shadow:0 0 20px -8px var(--gold-glow);}
 .shelf-card-name{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:17px;color:var(--ink);margin-bottom:6px;}
 .shelf-icon{margin-right:9px;color:var(--gold);}
+.shelf-private-badge{font-size:0.55em;vertical-align:super;margin-left:6px;cursor:help;opacity:0.85;}
 
 .shelf-icon-input-row{display:flex;align-items:center;gap:12px;}
 .shelf-icon-input-row input{flex:1;}
@@ -649,6 +660,20 @@ main.content{flex:1;min-width:0;padding:40px 44px 90px;}
 }
 .tag-pill-wrap:hover{border-color:var(--sapphire);}
 .tag-pill-wrap.selected{border-color:var(--sapphire);background:var(--sapphire-glow-soft);box-shadow:0 0 0 1px var(--sapphire) inset;}
+.tag-pill-wrap.term-note{border-color:rgba(103,217,206,0.3);}
+.tag-pill-wrap.term-note:hover{border-color:var(--cyan);}
+.tag-pill-wrap.term-note.selected{border-color:var(--cyan);background:rgba(103,217,206,0.12);box-shadow:0 0 0 1px var(--cyan) inset;}
+.tag-pill-wrap.term-note.selected .tag-pill{color:var(--cyan);}
+.tag-pill-wrap.term-note.selected .tag-pill .count{color:var(--cyan);}
+.term-icon{flex-shrink:0;}
+.term-icon-tag{color:var(--sapphire-bright);}
+.term-icon-note{color:var(--cyan);}
+.tag-cloud-legend{display:flex;gap:16px;margin-bottom:10px;}
+.tag-cloud-legend-item{
+  display:inline-flex;align-items:center;gap:5px;
+  font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.05em;
+  text-transform:uppercase;color:var(--ink-faint);
+}
 .tag-pill{
   display:flex;align-items:center;gap:7px;
   padding:7px 12px;font-family:'Inter',sans-serif;font-size:12.5px;color:var(--ink-dim);

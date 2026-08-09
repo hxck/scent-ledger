@@ -1,5 +1,14 @@
 {% extends "base.html" %}
 {% block title %}{{ f['name'] }} — The Scent Ledger{% endblock %}
+
+{% block breadcrumbs %}
+  {% if f['is_wishlist'] %}
+    <span class="breadcrumb-sep">/</span><a href="{{ url_for('wishlist') }}">Wishlist</a>
+  {% endif %}
+  <span class="breadcrumb-sep">/</span><a href="{{ url_for('search', q=f['brand']) }}">{{ f['brand'] }}</a>
+  <span class="breadcrumb-sep">/</span><span class="breadcrumb-current">{{ f['name'] }}</span>
+{% endblock %}
+
 {% block content %}
 
 <div class="detail-grid">
@@ -147,11 +156,12 @@
       </div>
     {% endif %}
 
-    {% if f['shelves'] %}
+    {% set visible_shelves = f['shelves'] if is_admin else (f['shelves'] | rejectattr('is_private') | list) %}
+    {% if visible_shelves %}
       <div class="section-label" style="margin-top:{{ '20px' if f['tags'] else '0' }};">On Shelves</div>
       <div class="tag-chip-list">
-        {% for s in f['shelves'] %}
-          <a class="tag-chip shelf-chip" href="{{ url_for('shelf_detail', shelf_id=s['id']) }}">{% if s['icon'] %}<i class="{{ s['icon'] }}"></i> {% endif %}{{ s['name'] }}</a>
+        {% for s in visible_shelves %}
+          <a class="tag-chip shelf-chip" href="{{ url_for('shelf_detail', shelf_id=s['id']) }}">{% if s['icon'] %}<i class="{{ s['icon'] }}"></i> {% endif %}{{ s['name'] }}{% if s['is_private'] %} 🔒{% endif %}</a>
         {% endfor %}
       </div>
     {% endif %}

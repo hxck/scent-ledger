@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Add Shelf — The Scent Ledger{% endblock %}
+{% block breadcrumbs %}
+  <span class="breadcrumb-sep">/</span><a href="{{ url_for('shelves_list') }}">Shelves</a>
+  <span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Add Shelf</span>
+{% endblock %}
 {% block content %}
 
 <div class="content-narrow">
@@ -24,6 +28,17 @@
           <button type="button" class="shelf-icon-choice" onclick="pickShelfIcon('{{ cls }}')" title="{{ cls }}"><i class="{{ cls }}"></i></button>
         {% endfor %}
       </div>
+    </div>
+
+    <div class="field">
+      <label>Privacy</label>
+      <div class="checkbox-row">
+        <label class="pill-check">
+          <input type="checkbox" name="is_private" value="1" {{ 'checked' if is_private else '' }}>
+          <span>🔒 Private (hidden from public visitors)</span>
+        </label>
+      </div>
+      <div class="field-note">Only visible when you're logged in. You can flip this later from the shelf's own page.</div>
     </div>
 
     <div class="form-actions">

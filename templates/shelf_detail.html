@@ -1,16 +1,27 @@
 {% extends "base.html" %}
 {% block title %}{{ shelf['name'] }} — Shelves — The Scent Ledger{% endblock %}
+{% block breadcrumbs %}
+  <span class="breadcrumb-sep">/</span><a href="{{ url_for('shelves_list') }}">Shelves</a>
+  <span class="breadcrumb-sep">/</span><span class="breadcrumb-current">{{ shelf['name'] }}</span>
+{% endblock %}
 {% block content %}
 
 <div class="hero" style="padding-bottom:24px;margin-bottom:24px;">
-  <h1 style="font-size:clamp(26px,3vw,36px);">{% if shelf['icon'] %}<i class="{{ shelf['icon'] }} shelf-icon"></i>{% endif %}{{ shelf['name'] }}</h1>
+  <h1 style="font-size:clamp(26px,3vw,36px);">
+    {% if shelf['icon'] %}<i class="{{ shelf['icon'] }} shelf-icon"></i>{% endif %}{{ shelf['name'] }}
+    {% if shelf['is_private'] %}<span class="shelf-private-badge" title="Private — hidden from public visitors">🔒</span>{% endif %}
+  </h1>
   <p>{{ fragrances|length }} fragrance{{ 's' if fragrances|length != 1 else '' }} on this shelf.</p>
   {% if is_admin %}
-    <form method="post" action="{{ url_for('delete_shelf', shelf_id=shelf['id']) }}"
-          onsubmit="return confirm('Delete the shelf &quot;{{ shelf['name'] }}&quot;? The fragrances on it aren\'t affected — just the shelf itself. This can\'t be undone.');"
-          style="margin-top:14px;">
-      <button type="submit" class="btn-ghost danger">Delete Shelf</button>
-    </form>
+    <div style="display:flex;gap:10px;margin-top:14px;">
+      <form method="post" action="{{ url_for('toggle_shelf_private', shelf_id=shelf['id']) }}">
+        <button type="submit" class="btn-ghost">{{ 'Make Public' if shelf['is_private'] else 'Make Private' }}</button>
+      </form>
+      <form method="post" action="{{ url_for('delete_shelf', shelf_id=shelf['id']) }}"
+            onsubmit="return confirm('Delete the shelf &quot;{{ shelf['name'] }}&quot;? The fragrances on it aren\'t affected — just the shelf itself. This can\'t be undone.');">
+        <button type="submit" class="btn-ghost danger">Delete Shelf</button>
+      </form>
+    </div>
   {% endif %}
 </div>
 

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Search — The Scent Ledger{% endblock %}
+{% block breadcrumbs %}<span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Search</span>{% endblock %}
 {% block content %}
 
 {% macro tag_url(new_q, new_tags) %}{{ url_for('search', q=new_q if new_q else None, tags=(new_tags|join(',')) if new_tags else None) }}{% endmacro %}
@@ -30,12 +31,29 @@
   {% if search_terms|length == 0 %}
     <div style="padding:16px;color:var(--ink-faint);font-size:13px;">Nothing to filter by yet — tags and notes will show up here as you catalog fragrances.</div>
   {% else %}
+    <div class="tag-cloud-legend">
+      <span class="tag-cloud-legend-item">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="term-icon-tag"><path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
+        Tag
+      </span>
+      <span class="tag-cloud-legend-item">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="term-icon-note"><path d="M12 2C12 2 4 12 4 17a8 8 0 0 0 16 0c0-5-8-15-8-15z"></path></svg>
+        Note
+      </span>
+    </div>
     <div class="tag-cloud">
       {% for row in search_terms %}
         {% set is_selected = row['term'] in active_tags %}
         {% set next_tags = (active_tags | reject('equalto', row['term']) | list) if is_selected else (active_tags + [row['term']]) %}
-        <div class="tag-pill-wrap {{ 'selected' if is_selected else '' }}">
-          <a class="tag-pill" href="{{ tag_url(q, next_tags) }}">
+        {% set term_kind = 'both' if (row['is_tag'] and row['is_note']) else ('tag' if row['is_tag'] else 'note') %}
+        <div class="tag-pill-wrap term-{{ term_kind }} {{ 'selected' if is_selected else '' }}">
+          <a class="tag-pill" href="{{ tag_url(q, next_tags) }}" title="{{ 'Tag & Note' if term_kind == 'both' else ('Tag' if term_kind == 'tag' else 'Note') }}">
+            {% if row['is_tag'] %}
+              <svg class="term-icon term-icon-tag" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
+            {% endif %}
+            {% if row['is_note'] %}
+              <svg class="term-icon term-icon-note" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C12 2 4 12 4 17a8 8 0 0 0 16 0c0-5-8-15-8-15z"></path></svg>
+            {% endif %}
             <span>{{ row['term'] }}</span><span class="count">{{ row['cnt'] }}</span>
           </a>
           {% if is_admin and row['tag_id'] %}

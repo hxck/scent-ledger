@@ -133,6 +133,8 @@ def _run_migrations(conn):
     shelves_cols = {row[1] for row in conn.execute("PRAGMA table_info(shelves)").fetchall()}
     if "icon" not in shelves_cols:
         conn.execute("ALTER TABLE shelves ADD COLUMN icon TEXT")
+    if "is_private" not in shelves_cols:
+        conn.execute("ALTER TABLE shelves ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0")
 
 
 def init_db():
@@ -237,7 +239,10 @@ def inject_sidebar():
         )
         """
     ).fetchone()["c"]
-    shelves_count = get_db().execute("SELECT COUNT(*) AS c FROM shelves").fetchone()["c"]
+    shelves_count_query = "SELECT COUNT(*) AS c FROM shelves"
+    if not session.get("logged_in"):
+        shelves_count_query += " WHERE is_private = 0"
+    shelves_count = get_db().execute(shelves_count_query).fetchone()["c"]
     return {
         "sidebar_groups": groups, "sidebar_total": total, "sidebar_brand_count": len(groups),
         "wishlist_count": wishlist_count, "sidebar_owned_only": bool(session.get("sidebar_owned_only")),
@@ -329,7 +334,7 @@ def get_fragrance_full(fragrance_id):
 
     shelves = db.execute(
         """
-        SELECT s.id, s.name, s.icon FROM shelves s
+        SELECT s.id, s.name, s.icon, s.is_private FROM shelves s
         JOIN shelf_fragrances sf ON sf.shelf_id = s.id
         WHERE sf.fragrance_id = ?
         ORDER BY s.name COLLATE NOCASE
@@ -362,9 +367,11 @@ def get_search_term_counts():
     collection, unified into one searchable term list. A tag and a note that
     share a name (case-insensitive) — e.g. tag "Vanilla" on one fragrance,
     note "vanilla" on another — collapse into a single term rather than
-    double-counting a fragrance that matches both. Each entry carries the
-    real tag's id when there is one (only those get a delete button in the
-    UI; a note isn't a deletable row the way a tag is)."""
+    double-counting a fragrance that matches both, but is_tag/is_note are
+    tracked independently so the UI can still show what kind(s) of thing
+    it is (a term can legitimately be both). Each entry carries the real
+    tag's id when there is one (only those get a delete button in the UI;
+    a note isn't a deletable row the way a tag is)."""
     db = get_db()
 
     tag_rows = db.execute("SELECT id, name FROM tags").fetchall()
@@ -384,20 +391,26 @@ def get_search_term_counts():
         """
     ).fetchall()
 
-    terms = {}  # lowercase key -> {"display": str, "ids": set(), "tag_id": int|None}
+    # lowercase key -> {"display": str, "ids": set(), "tag_id": int|None, "is_tag": bool, "is_note": bool}
+    terms = {}
+
+    def _touch(text, fragrance_id, source):
+        text = (text or "").strip()
+        if not text:
+            return
+        key = text.lower()
+        if key not in terms:
+            terms[key] = {"display": text, "ids": set(), "tag_id": tag_id_by_key.get(key), "is_tag": False, "is_note": False}
+        terms[key]["ids"].add(fragrance_id)
+        terms[key][source] = True
+
     for row in rows:
-        frag_terms = set()
         if row["tag_list"]:
-            frag_terms.update(x.strip() for x in row["tag_list"].split(","))
+            for text in row["tag_list"].split(","):
+                _touch(text, row["fragrance_id"], "is_tag")
         if row["note_list"]:
-            frag_terms.update(x.strip() for x in row["note_list"].split(","))
-        for text in frag_terms:
-            if not text:
-                continue
-            key = text.lower()
-            if key not in terms:
-                terms[key] = {"display": text, "ids": set(), "tag_id": tag_id_by_key.get(key)}
-            terms[key]["ids"].add(row["fragrance_id"])
+            for text in row["note_list"].split(","):
+                _touch(text, row["fragrance_id"], "is_note")
 
     # Tags currently attached to nothing (e.g. mid-edit, before the orphan
     # sweep runs) still show up so they're reachable to delete by hand,
@@ -405,10 +418,13 @@ def get_search_term_counts():
     for row in tag_rows:
         key = row["name"].strip().lower()
         if key not in terms:
-            terms[key] = {"display": row["name"], "ids": set(), "tag_id": row["id"]}
+            terms[key] = {"display": row["name"], "ids": set(), "tag_id": row["id"], "is_tag": True, "is_note": False}
 
     result = [
-        {"term": v["display"], "cnt": len(v["ids"]), "tag_id": v["tag_id"]}
+        {
+            "term": v["display"], "cnt": len(v["ids"]), "tag_id": v["tag_id"],
+            "is_tag": v["is_tag"], "is_note": v["is_note"],
+        }
         for v in terms.values()
     ]
     return sorted(result, key=lambda r: r["term"].lower())
@@ -1267,15 +1283,15 @@ def merge_note():
 @app.route("/shelves")
 def shelves_list():
     db = get_db()
-    rows = db.execute(
-        """
-        SELECT s.id, s.name, s.icon, COUNT(sf.fragrance_id) AS cnt
+    query = """
+        SELECT s.id, s.name, s.icon, s.is_private, COUNT(sf.fragrance_id) AS cnt
         FROM shelves s
         LEFT JOIN shelf_fragrances sf ON sf.shelf_id = s.id
-        GROUP BY s.id
-        ORDER BY s.name COLLATE NOCASE
-        """
-    ).fetchall()
+    """
+    if not session.get("logged_in"):
+        query += " WHERE s.is_private = 0"
+    query += " GROUP BY s.id ORDER BY s.name COLLATE NOCASE"
+    rows = db.execute(query).fetchall()
     shelves = [dict(r) for r in rows]
     return render_template("shelves.html", shelves=shelves)
 
@@ -1305,11 +1321,14 @@ def add_shelf():
         return render_template("shelf_form.html")
     name = request.form.get("name", "").strip()
     icon = _validate_fa_icon(request.form.get("icon", ""))
+    is_private = bool(request.form.get("is_private"))
     if not name:
         flash("Shelf name is required.", "error")
-        return render_template("shelf_form.html", name=name, icon=icon), 400
+        return render_template("shelf_form.html", name=name, icon=icon, is_private=is_private), 400
     db = get_db()
-    cur = db.execute("INSERT INTO shelves (name, icon) VALUES (?, ?)", (name, icon))
+    cur = db.execute(
+        "INSERT INTO shelves (name, icon, is_private) VALUES (?, ?, ?)", (name, icon, is_private)
+    )
     db.commit()
     flash(f'Created shelf "{name}".', "success")
     return redirect(url_for("shelf_detail", shelf_id=cur.lastrowid))
@@ -1318,8 +1337,12 @@ def add_shelf():
 @app.route("/shelves/<int:shelf_id>")
 def shelf_detail(shelf_id):
     db = get_db()
-    shelf = db.execute("SELECT id, name, icon FROM shelves WHERE id = ?", (shelf_id,)).fetchone()
+    shelf = db.execute("SELECT id, name, icon, is_private FROM shelves WHERE id = ?", (shelf_id,)).fetchone()
     if shelf is None:
+        abort(404)
+    if shelf["is_private"] and not session.get("logged_in"):
+        # Same response as "doesn't exist" — a private shelf's existence
+        # isn't revealed to a visitor who isn't allowed to see it.
         abort(404)
     on_shelf_rows = db.execute(
         """
@@ -1338,6 +1361,21 @@ def shelf_detail(shelf_id):
         "shelf_detail.html", shelf=shelf, fragrances=fragrances,
         all_grouped=all_grouped, on_shelf_ids=on_shelf_ids,
     )
+
+
+@app.route("/shelves/<int:shelf_id>/toggle-private", methods=["POST"])
+@login_required
+def toggle_shelf_private(shelf_id):
+    db = get_db()
+    shelf = db.execute("SELECT is_private FROM shelves WHERE id = ?", (shelf_id,)).fetchone()
+    if shelf is None:
+        abort(404)
+    db.execute(
+        "UPDATE shelves SET is_private = ? WHERE id = ?",
+        (0 if shelf["is_private"] else 1, shelf_id),
+    )
+    db.commit()
+    return redirect(url_for("shelf_detail", shelf_id=shelf_id))
 
 
 @app.route("/shelves/<int:shelf_id>/toggle/<int:fragrance_id>", methods=["POST"])

@@ -2,6 +2,20 @@
 {% set fd = f or {} %}
 {% set notes = fd.get('notes', {}) %}
 {% block title %}{{ 'Edit Fragrance' if mode == 'edit' else 'Add a Fragrance' }} — The Scent Ledger{% endblock %}
+
+{% block breadcrumbs %}
+  {% if mode == 'edit' %}
+    {% if fd.get('is_wishlist') %}
+      <span class="breadcrumb-sep">/</span><a href="{{ url_for('wishlist') }}">Wishlist</a>
+    {% endif %}
+    <span class="breadcrumb-sep">/</span><a href="{{ url_for('search', q=fd.get('brand', '')) }}">{{ fd.get('brand', '') }}</a>
+    <span class="breadcrumb-sep">/</span><a href="{{ url_for('detail', fragrance_id=fd['id']) }}">{{ fd.get('name', '') }}</a>
+    <span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Edit</span>
+  {% else %}
+    <span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Add Fragrance</span>
+  {% endif %}
+{% endblock %}
+
 {% block content %}
 
 <div class="content-narrow">

@@ -131,6 +131,15 @@
   </aside>
 
   <main class="content">
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      {% if request.path == '/' %}
+        <span class="breadcrumb-current">Home</span>
+      {% else %}
+        <a href="{{ url_for('home') }}">Home</a>
+      {% endif %}
+      {% block breadcrumbs %}{% endblock %}
+    </nav>
+
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <div class="flash-wrap">
