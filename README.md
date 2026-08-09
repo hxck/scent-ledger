@@ -8,6 +8,14 @@ project that I uploaded for ease-of-use and a potential case that anyone might
 want to use it. This repo is provided with no guarantees of any kind regarding
 this project.
 
+![App Interface](./screenshots/screenshot.png)
+
+![App Interface](./screenshots/screen2.png)
+
+![App Interface](./screenshots/screen3.png)
+
+![App Interface](./screenshots/screen4.png)
+
 ## Features
 
 - Sidebar listing every fragrance, grouped and spaced by brand, with a

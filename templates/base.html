@@ -60,6 +60,14 @@
       </svg>
       Wishlist{% if wishlist_count %} ({{ wishlist_count }}){% endif %}
     </a>
+    {% if is_admin %}
+      <a href="{{ url_for('notes_library') }}" class="sidebar-stats-link {{ 'active' if request.path == '/notes' else '' }}">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2C12 2 4 12 4 17a8 8 0 0 0 16 0c0-5-8-15-8-15z"></path>
+        </svg>
+        Note Library{% if missing_notes_count %} ({{ missing_notes_count }}){% endif %}
+      </a>
+    {% endif %}
 
     {% if sidebar_total_unfiltered == 0 %}
       <div class="sidebar-empty">{{ 'Your collection is empty. Use “+ Add Fragrance” to catalog your first bottle.' if is_admin else 'This collection is empty.' }}</div>

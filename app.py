@@ -206,10 +206,21 @@ def inject_sidebar():
     wishlist_count = get_db().execute(
         "SELECT COUNT(*) AS c FROM fragrances WHERE is_wishlist = 1"
     ).fetchone()["c"]
+    missing_notes_count = get_db().execute(
+        """
+        SELECT COUNT(*) AS c FROM (
+            SELECT LOWER(TRIM(n.note_text)) AS note_key
+            FROM notes n
+            LEFT JOIN note_images ni ON ni.note_key = LOWER(TRIM(n.note_text))
+            WHERE ni.image_filename IS NULL
+            GROUP BY LOWER(TRIM(n.note_text))
+        )
+        """
+    ).fetchone()["c"]
     return {
         "sidebar_groups": groups, "sidebar_total": total, "sidebar_brand_count": len(groups),
         "wishlist_count": wishlist_count, "sidebar_owned_only": bool(session.get("sidebar_owned_only")),
-        "sidebar_total_unfiltered": total_unfiltered,
+        "sidebar_total_unfiltered": total_unfiltered, "missing_notes_count": missing_notes_count,
     }
 
 
@@ -1081,6 +1092,79 @@ def delete_tag(tag_id):
     db.commit()
     flash(f'Removed tag "{row["name"]}".', "success")
     return redirect(_safe_next_url(request.form.get("next", "")))
+
+
+@app.route("/notes")
+@login_required
+def notes_library():
+    """Every distinct note used anywhere in the collection, with its cached
+    icon if it has one. Notes missing an icon sort first, since finding and
+    filling those in is the actual point of this page. Fragrantica's own
+    note database doesn't cover everything — this is where you fill the
+    gaps in by hand, from a photo or a URL you found elsewhere."""
+    db = get_db()
+    rows = db.execute(
+        """
+        SELECT LOWER(TRIM(n.note_text)) AS note_key,
+               MIN(n.note_text) AS display_name,
+               COUNT(DISTINCT n.fragrance_id) AS cnt,
+               MAX(ni.image_filename) AS image_filename
+        FROM notes n
+        LEFT JOIN note_images ni ON ni.note_key = LOWER(TRIM(n.note_text))
+        GROUP BY LOWER(TRIM(n.note_text))
+        ORDER BY (MAX(ni.image_filename) IS NOT NULL), MIN(n.note_text) COLLATE NOCASE
+        """
+    ).fetchall()
+    notes = [dict(r) for r in rows]
+    missing_count = sum(1 for n in notes if not n["image_filename"])
+    return render_template("notes.html", notes=notes, missing_count=missing_count)
+
+
+@app.route("/notes/upload", methods=["POST"])
+@login_required
+def upload_note_image():
+    """Manually fills in an icon for one note, by upload or by URL. Only
+    ever fills a gap — a note that already has an icon is left alone, same
+    as the automatic Fragrantica-import path. No background removal here
+    (unlike bottle photos): these are small, already-cropped icons, and
+    that's stayed true whether Fragrantica supplied them or you did."""
+    note_key = request.form.get("note_key", "").strip().lower()
+    if not note_key:
+        abort(400)
+
+    db = get_db()
+    existing = db.execute("SELECT 1 FROM note_images WHERE note_key = ?", (note_key,)).fetchone()
+    if existing:
+        flash("That note already has an image.", "error")
+        return redirect(url_for("notes_library"))
+
+    uploaded = request.files.get("image")
+    url = request.form.get("image_url", "").strip()
+    filename = None
+
+    if uploaded and uploaded.filename:
+        if allowed_file(uploaded.filename):
+            img = Image.open(uploaded.stream)
+            filename = _resize_and_store(img, max_width=NOTE_IMAGE_MAX_WIDTH)
+        else:
+            flash("Image must be a PNG, JPG, or WEBP file.", "error")
+            return redirect(url_for("notes_library"))
+    elif url:
+        filename = fetch_remote_image_filename(url, max_width=NOTE_IMAGE_MAX_WIDTH)
+        if not filename:
+            flash("Couldn't fetch an image from that URL.", "error")
+            return redirect(url_for("notes_library"))
+    else:
+        flash("Provide a file or a URL.", "error")
+        return redirect(url_for("notes_library"))
+
+    db.execute(
+        "INSERT OR IGNORE INTO note_images (note_key, image_filename) VALUES (?, ?)",
+        (note_key, filename),
+    )
+    db.commit()
+    flash(f'Added an image for "{note_key}".', "success")
+    return redirect(url_for("notes_library"))
 
 
 @app.route("/wishlist")

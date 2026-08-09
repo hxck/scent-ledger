@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Note Library — The Scent Ledger{% endblock %}
+{% block content %}
+
+<div class="hero" style="padding-bottom:24px;margin-bottom:24px;">
+  <h1 style="font-size:clamp(26px,3vw,36px);">Note Library</h1>
+  <p>
+    {% if missing_count %}
+      {{ missing_count }} note{{ 's' if missing_count != 1 else '' }} missing an icon —
+      fill them in by uploading a file or pasting a URL from wherever you found one.
+    {% else %}
+      Every note in your collection has an icon.
+    {% endif %}
+  </p>
+</div>
+
+{% if notes|length == 0 %}
+  <div class="empty-state">
+    <h2>No notes yet</h2>
+    <p>Notes show up here once they're on a fragrance.</p>
+  </div>
+{% else %}
+  <div class="note-library-grid">
+    {% for n in notes %}
+      <div class="note-lib-card {{ 'missing' if not n['image_filename'] else '' }}">
+        <div class="note-lib-thumb {{ 'no-bg' if n['image_filename'] and n['image_filename'].endswith('.png') else '' }}">
+          {% if n['image_filename'] %}
+            <img src="{{ url_for('static', filename='uploads/' + n['image_filename']) }}" alt="{{ n['display_name'] }}">
+          {% else %}
+            <div class="ph">NO<br>IMAGE</div>
+          {% endif %}
+        </div>
+        <div class="note-lib-info">
+          <div class="note-lib-name">{{ n['display_name'] }}</div>
+          <div class="note-lib-count">{{ n['cnt'] }} fragrance{{ 's' if n['cnt'] != 1 else '' }}</div>
+        </div>
+        {% if not n['image_filename'] %}
+          <form method="post" action="{{ url_for('upload_note_image') }}" enctype="multipart/form-data" class="note-lib-upload">
+            <input type="hidden" name="note_key" value="{{ n['note_key'] }}">
+            <input type="file" name="image" accept="image/*" class="note-lib-file">
+            <div class="note-lib-or">or paste a URL</div>
+            <input type="url" name="image_url" placeholder="https://...">
+            <button type="submit" class="btn-ghost">Add Image</button>
+          </form>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% endblock %}
