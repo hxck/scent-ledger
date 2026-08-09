@@ -7,10 +7,10 @@
   <p>
     {% if missing_count %}
       {{ missing_count }} note{{ 's' if missing_count != 1 else '' }} missing an icon —
-      fill them in by uploading a file or pasting a URL from wherever you found one.
     {% else %}
-      Every note in your collection has an icon.
+      Every note in your collection has an icon —
     {% endif %}
+    upload a file or paste a URL to add or replace one, from wherever you found it.
   </p>
 </div>
 
@@ -34,13 +34,29 @@
           <div class="note-lib-name">{{ n['display_name'] }}</div>
           <div class="note-lib-count">{{ n['cnt'] }} fragrance{{ 's' if n['cnt'] != 1 else '' }}</div>
         </div>
-        {% if not n['image_filename'] %}
-          <form method="post" action="{{ url_for('upload_note_image') }}" enctype="multipart/form-data" class="note-lib-upload">
-            <input type="hidden" name="note_key" value="{{ n['note_key'] }}">
-            <input type="file" name="image" accept="image/*" class="note-lib-file">
-            <div class="note-lib-or">or paste a URL</div>
-            <input type="url" name="image_url" placeholder="https://...">
-            <button type="submit" class="btn-ghost">Add Image</button>
+        {% if n['image_filename'] %}
+          <button type="button" class="btn-ghost note-lib-replace-toggle" onclick="toggleNoteReplace(this)">Replace</button>
+        {% endif %}
+        <form method="post" action="{{ url_for('upload_note_image') }}" enctype="multipart/form-data"
+              class="note-lib-upload {{ 'collapsed' if n['image_filename'] else '' }}">
+          <input type="hidden" name="note_key" value="{{ n['note_key'] }}">
+          <input type="file" name="image" accept="image/*" class="note-lib-file">
+          <div class="note-lib-or">or paste a URL</div>
+          <input type="url" name="image_url" placeholder="https://...">
+          <button type="submit" class="btn-ghost">{{ 'Replace Image' if n['image_filename'] else 'Add Image' }}</button>
+        </form>
+        {% if notes|length > 1 %}
+          <button type="button" class="btn-ghost note-lib-merge-toggle" onclick="toggleNoteReplace(this)">Merge into…</button>
+          <form method="post" action="{{ url_for('merge_note') }}" class="note-lib-merge collapsed"
+                onsubmit="return confirm('Merge &quot;{{ n['display_name'] }}&quot; into the note you picked? Every fragrance with &quot;{{ n['display_name'] }}&quot; will be updated to use that note instead. This can\'t be undone.');">
+            <input type="hidden" name="source_key" value="{{ n['note_key'] }}">
+            <select name="target_key" required>
+              <option value="" disabled selected>Merge into…</option>
+              {% for other in notes if other['note_key'] != n['note_key'] %}
+                <option value="{{ other['note_key'] }}">{{ other['display_name'] }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="btn-ghost">Merge</button>
           </form>
         {% endif %}
       </div>

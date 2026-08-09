@@ -339,3 +339,13 @@ function fillEditModeGaps(data, chipControllers, matchedBy) {
     ' Nothing is saved yet — review below and click Save Changes.'
   );
 }
+
+// Note Library page: a note that already has an icon keeps its replace form
+// collapsed behind a small button, so the page isn't cluttered with an open
+// upload form under every note that's already fine.
+function toggleNoteReplace(button) {
+  const form = button.nextElementSibling;
+  const opening = !form.classList.contains('open');
+  form.classList.toggle('open', opening);
+  button.style.display = opening ? 'none' : '';
+}

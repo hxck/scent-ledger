@@ -599,6 +599,19 @@ main.content{flex:1;min-width:0;padding:40px 44px 90px;}
 .note-lib-name{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;color:var(--ink);}
 .note-lib-count{font-size:11px;color:var(--ink-faint);margin-top:2px;}
 .note-lib-upload{display:flex;flex-direction:column;gap:7px;margin-top:2px;width:100%;}
+.note-lib-upload.collapsed{display:none;}
+.note-lib-upload.collapsed.open{display:flex;}
+.note-lib-replace-toggle{width:100%;font-size:11.5px;padding:6px 10px;}
+.note-lib-merge-toggle{width:100%;font-size:11.5px;padding:6px 10px;}
+.note-lib-merge{display:flex;flex-direction:column;gap:7px;margin-top:2px;width:100%;}
+.note-lib-merge.collapsed{display:none;}
+.note-lib-merge.collapsed.open{display:flex;}
+.note-lib-merge select{
+  background:var(--bg-card);border:1px solid var(--line);color:var(--ink);
+  padding:7px 9px;border-radius:var(--radius);font-size:12px;outline:none;width:100%;
+  transition:border-color .15s;
+}
+.note-lib-merge select:focus{border-color:var(--sapphire);}
 .note-lib-file{font-size:10.5px;color:var(--ink-dim);width:100%;}
 .note-lib-or{font-size:10px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:0.06em;}
 .note-lib-upload input[type=url]{

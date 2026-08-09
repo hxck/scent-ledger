@@ -1123,20 +1123,18 @@ def notes_library():
 @app.route("/notes/upload", methods=["POST"])
 @login_required
 def upload_note_image():
-    """Manually fills in an icon for one note, by upload or by URL. Only
-    ever fills a gap — a note that already has an icon is left alone, same
-    as the automatic Fragrantica-import path. No background removal here
-    (unlike bottle photos): these are small, already-cropped icons, and
-    that's stayed true whether Fragrantica supplied them or you did."""
+    """Sets (or replaces) the icon for one note, by upload or by URL. Unlike
+    bottle photos, these don't get automatic background removal — they're
+    already small, cropped icons whether Fragrantica supplied them or you
+    did."""
     note_key = request.form.get("note_key", "").strip().lower()
     if not note_key:
         abort(400)
 
     db = get_db()
-    existing = db.execute("SELECT 1 FROM note_images WHERE note_key = ?", (note_key,)).fetchone()
-    if existing:
-        flash("That note already has an image.", "error")
-        return redirect(url_for("notes_library"))
+    existing = db.execute(
+        "SELECT image_filename FROM note_images WHERE note_key = ?", (note_key,)
+    ).fetchone()
 
     uploaded = request.files.get("image")
     url = request.form.get("image_url", "").strip()
@@ -1158,12 +1156,78 @@ def upload_note_image():
         flash("Provide a file or a URL.", "error")
         return redirect(url_for("notes_library"))
 
+    # Only remove the old file once the new one is safely saved — a failed
+    # fetch/upload above already returned before this point, so the note
+    # never ends up with neither.
     db.execute(
-        "INSERT OR IGNORE INTO note_images (note_key, image_filename) VALUES (?, ?)",
+        "INSERT INTO note_images (note_key, image_filename) VALUES (?, ?) "
+        "ON CONFLICT(note_key) DO UPDATE SET image_filename = excluded.image_filename",
         (note_key, filename),
     )
     db.commit()
-    flash(f'Added an image for "{note_key}".', "success")
+    if existing and existing["image_filename"] and existing["image_filename"] != filename:
+        delete_image(existing["image_filename"])
+
+    flash(f'{"Replaced" if existing else "Added"} the image for "{note_key}".', "success")
+    return redirect(url_for("notes_library"))
+
+
+@app.route("/notes/merge", methods=["POST"])
+@login_required
+def merge_note():
+    """Merges one note into another everywhere it's used — e.g. "Ceylonese
+    Cinnamon" and "Cinnamon" being the same thing under two different
+    spellings. The source note disappears; every fragrance that had it now
+    has the target note's text instead. If that leaves a fragrance with the
+    same note twice in one tier (it had both spellings there already), the
+    duplicate is dropped rather than showing the same note twice in the
+    pyramid. Icons are handled without losing a good one: if only the
+    source note had an icon, the target adopts it; otherwise the source's
+    icon (now orphaned) is removed."""
+    source_key = request.form.get("source_key", "").strip().lower()
+    target_key = request.form.get("target_key", "").strip().lower()
+    if not source_key or not target_key or source_key == target_key:
+        flash("Pick two different notes to merge.", "error")
+        return redirect(url_for("notes_library"))
+
+    db = get_db()
+    source_row = db.execute(
+        "SELECT note_text FROM notes WHERE LOWER(TRIM(note_text)) = ? LIMIT 1", (source_key,)
+    ).fetchone()
+    target_row = db.execute(
+        "SELECT note_text FROM notes WHERE LOWER(TRIM(note_text)) = ? LIMIT 1", (target_key,)
+    ).fetchone()
+    if source_row is None or target_row is None:
+        flash("Couldn't find one of those notes.", "error")
+        return redirect(url_for("notes_library"))
+    source_display, target_text = source_row["note_text"], target_row["note_text"]
+
+    db.execute(
+        "UPDATE notes SET note_text = ? WHERE LOWER(TRIM(note_text)) = ?",
+        (target_text, source_key),
+    )
+    # A fragrance that listed both spellings in the same tier now has the
+    # same note twice there — keep just one.
+    db.execute(
+        """
+        DELETE FROM notes
+        WHERE id NOT IN (
+            SELECT MIN(id) FROM notes GROUP BY fragrance_id, tier, LOWER(TRIM(note_text))
+        )
+        """
+    )
+
+    target_icon = db.execute("SELECT image_filename FROM note_images WHERE note_key = ?", (target_key,)).fetchone()
+    source_icon = db.execute("SELECT image_filename FROM note_images WHERE note_key = ?", (source_key,)).fetchone()
+    if source_icon:
+        if target_icon:
+            delete_image(source_icon["image_filename"])
+            db.execute("DELETE FROM note_images WHERE note_key = ?", (source_key,))
+        else:
+            db.execute("UPDATE note_images SET note_key = ? WHERE note_key = ?", (target_key, source_key))
+
+    db.commit()
+    flash(f'Merged "{source_display}" into "{target_text}".', "success")
     return redirect(url_for("notes_library"))
 
 
