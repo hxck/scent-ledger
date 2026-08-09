@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Shelves — The Scent Ledger{% endblock %}
+{% block content %}
+
+<div class="hero" style="padding-bottom:24px;margin-bottom:24px;">
+  <h1 style="font-size:clamp(26px,3vw,36px);">Shelves</h1>
+  <p>Custom groupings of fragrances — signature scents, date night, whatever you want to organize by.</p>
+</div>
+
+{% if is_admin %}
+  <a class="btn-primary" href="{{ url_for('add_shelf') }}" style="display:inline-block;text-decoration:none;margin-bottom:28px;">+ Add Shelf</a>
+{% endif %}
+
+{% if shelves|length == 0 %}
+  <div class="empty-state">
+    <h2>No shelves yet</h2>
+    <p>{{ 'Create one to start grouping fragrances however you like.' if is_admin else 'Nothing has been organized into shelves yet.' }}</p>
+  </div>
+{% else %}
+  <div class="shelf-list">
+    {% for s in shelves %}
+      <a class="shelf-card" href="{{ url_for('shelf_detail', shelf_id=s['id']) }}">
+        <div class="shelf-card-name">{% if s['icon'] %}<i class="{{ s['icon'] }} shelf-icon"></i>{% endif %}{{ s['name'] }}</div>
+        <div class="shelf-card-count">{{ s['cnt'] }} fragrance{{ 's' if s['cnt'] != 1 else '' }}</div>
+      </a>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% endblock %}

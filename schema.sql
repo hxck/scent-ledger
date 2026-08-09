@@ -54,7 +54,25 @@ CREATE TABLE IF NOT EXISTS note_images (
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Custom named groupings of fragrances ("Date Night", "Signature Scents",
+-- etc.) — independent of brand, tags, or wishlist status. A fragrance can be
+-- on any number of shelves.
+CREATE TABLE IF NOT EXISTS shelves (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL,
+    icon            TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS shelf_fragrances (
+    shelf_id        INTEGER NOT NULL REFERENCES shelves(id) ON DELETE CASCADE,
+    fragrance_id    INTEGER NOT NULL REFERENCES fragrances(id) ON DELETE CASCADE,
+    PRIMARY KEY (shelf_id, fragrance_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_fragrances_brand ON fragrances(brand);
 CREATE INDEX IF NOT EXISTS idx_notes_fragrance ON notes(fragrance_id);
 CREATE INDEX IF NOT EXISTS idx_fragrance_tags_fragrance ON fragrance_tags(fragrance_id);
 CREATE INDEX IF NOT EXISTS idx_fragrance_tags_tag ON fragrance_tags(tag_id);
+CREATE INDEX IF NOT EXISTS idx_shelf_fragrances_shelf ON shelf_fragrances(shelf_id);
+CREATE INDEX IF NOT EXISTS idx_shelf_fragrances_fragrance ON shelf_fragrances(fragrance_id);

@@ -1,0 +1,31 @@
+services:
+  scent-ledger:
+    image: ghcr.io/hxck/scent-ledger:latest
+    ports:
+      - 8000:8000
+    environment:
+      SECRET_KEY: change-me-to-something-random
+      # Admin login for Add/Edit/Delete — required.
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: change-me-to-something-random
+      # Uncomment once this is served over HTTPS
+      # SESSION_COOKIE_SECURE: "true"
+    volumes:
+      - scent_ledger_data:/app/data
+      - scent_ledger_uploads:/app/static/uploads
+    restart: unless-stopped
+    #healthcheck:
+    #  test:
+    #    - CMD
+    #    - python3
+    #    - -c
+    #    - import urllib.request;
+    #      urllib.request.urlopen('http://localhost:8000/healthz')
+    #  interval: 30s
+    #  timeout: 5s
+    # retries: 3
+    #  start_period: 10s
+volumes:
+  scent_ledger_data: null
+  scent_ledger_uploads: null
+networks: {}

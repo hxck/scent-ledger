@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ shelf['name'] }} — Shelves — The Scent Ledger{% endblock %}
+{% block content %}
+
+<div class="hero" style="padding-bottom:24px;margin-bottom:24px;">
+  <h1 style="font-size:clamp(26px,3vw,36px);">{% if shelf['icon'] %}<i class="{{ shelf['icon'] }} shelf-icon"></i>{% endif %}{{ shelf['name'] }}</h1>
+  <p>{{ fragrances|length }} fragrance{{ 's' if fragrances|length != 1 else '' }} on this shelf.</p>
+  {% if is_admin %}
+    <form method="post" action="{{ url_for('delete_shelf', shelf_id=shelf['id']) }}"
+          onsubmit="return confirm('Delete the shelf &quot;{{ shelf['name'] }}&quot;? The fragrances on it aren\'t affected — just the shelf itself. This can\'t be undone.');"
+          style="margin-top:14px;">
+      <button type="submit" class="btn-ghost danger">Delete Shelf</button>
+    </form>
+  {% endif %}
+</div>
+
+{% if fragrances|length == 0 %}
+  <div class="empty-state">
+    <h2>Nothing on this shelf yet</h2>
+    <p>{{ 'Add some from the list below.' if is_admin else 'Check back later.' }}</p>
+  </div>
+{% else %}
+  <div class="grid">
+    {% for f in fragrances %}
+      {% include "_card.html" %}
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% if is_admin %}
+  <details class="tag-details" style="margin-top:36px;">
+    <summary class="section-label tag-details-summary">Add Fragrances to This Shelf</summary>
+    {% if all_grouped|length == 0 %}
+      <div style="padding:16px;color:var(--ink-faint);font-size:13px;">No fragrances in your collection yet.</div>
+    {% else %}
+      <div class="shelf-add-list">
+        {% for brand, items in all_grouped %}
+          <div class="shelf-add-group">
+            <div class="bg-label">{{ brand }}</div>
+            {% for item in items %}
+              <form method="post" action="{{ url_for('toggle_shelf_fragrance', shelf_id=shelf['id'], fragrance_id=item['id']) }}" class="shelf-add-row">
+                <span class="shelf-add-name">{{ item['name'] }}</span>
+                <button type="submit" class="shelf-add-btn {{ 'on-shelf' if item['id'] in on_shelf_ids else '' }}"
+                        aria-label="{{ 'Remove from shelf' if item['id'] in on_shelf_ids else 'Add to shelf' }}">
+                  {{ '−' if item['id'] in on_shelf_ids else '+' }}
+                </button>
+              </form>
+            {% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </details>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Add Shelf — The Scent Ledger{% endblock %}
+{% block content %}
+
+<div class="content-narrow">
+  <h1 class="form-title">Add Shelf</h1>
+  <p class="form-hint">Give it a name — you'll add fragrances to it from the shelf's own page.</p>
+
+  <form method="post" novalidate>
+    <div class="field">
+      <label for="fShelfName">Shelf Name</label>
+      <input type="text" id="fShelfName" name="name" placeholder="e.g. Date Night, Signature Scents, Summer Rotation" value="{{ name or '' }}">
+    </div>
+
+    <div class="field">
+      <label for="fShelfIcon">Icon <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional — Font Awesome)</span></label>
+      <div class="shelf-icon-input-row">
+        <i id="shelfIconPreview" class="{{ icon or 'fa-solid fa-shapes' }}" style="{{ '' if icon else 'opacity:0.3;' }}"></i>
+        <input type="text" id="fShelfIcon" name="icon" placeholder="fa-solid fa-heart" value="{{ icon or '' }}" oninput="updateShelfIconPreview(this.value)">
+      </div>
+      <div class="field-note">Pick one below, or type any Font Awesome Free class from fontawesome.com/icons.</div>
+      <div class="shelf-icon-palette">
+        {% for cls in ['fa-solid fa-heart','fa-solid fa-star','fa-solid fa-gift','fa-solid fa-sun','fa-solid fa-moon','fa-solid fa-snowflake','fa-solid fa-fire','fa-solid fa-leaf','fa-solid fa-briefcase','fa-solid fa-gem','fa-solid fa-bookmark','fa-solid fa-tag','fa-solid fa-flask','fa-solid fa-droplet','fa-solid fa-wind','fa-solid fa-cloud','fa-solid fa-umbrella','fa-solid fa-palette','fa-solid fa-wine-glass','fa-solid fa-champagne-glasses','fa-solid fa-crown','fa-solid fa-spa','fa-solid fa-plane','fa-solid fa-house'] %}
+          <button type="button" class="shelf-icon-choice" onclick="pickShelfIcon('{{ cls }}')" title="{{ cls }}"><i class="{{ cls }}"></i></button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn-primary">Create Shelf</button>
+      <a class="btn-ghost" href="{{ url_for('shelves_list') }}" style="display:inline-block;">Cancel</a>
+    </div>
+  </form>
+</div>
+
+{% endblock %}

@@ -37,6 +37,17 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+// Fragrance list within the sidebar has its own, separate collapse — the nav
+// links and "owned only" toggle stay visible either way.
+document.addEventListener('DOMContentLoaded', () => {
+  const listToggle = document.getElementById('sidebarListToggle');
+  if (!listToggle) return;
+  listToggle.addEventListener('click', () => {
+    const collapsed = document.documentElement.classList.toggle('sidebar-list-collapsed');
+    localStorage.setItem('sidebarListCollapsed', collapsed);
+  });
+});
+
 // Chip-style input for notes (top/middle/base) and tags.
 // Keeps a hidden <input> in sync with a comma-separated list, backing a plain HTML form submit.
 function initChipField(hiddenId, containerId, textInputId, initialValues) {
@@ -360,4 +371,20 @@ function toggleNoteReplace(button) {
   const opening = !form.classList.contains('open');
   form.classList.toggle('open', opening);
   button.style.display = opening ? 'none' : '';
+}
+
+// Add Shelf form: live preview as the icon class is typed, and clicking a
+// palette suggestion fills the text input with that icon's class.
+function updateShelfIconPreview(value) {
+  const preview = document.getElementById('shelfIconPreview');
+  if (!preview) return;
+  value = value.trim();
+  preview.className = value || 'fa-solid fa-shapes';
+  preview.style.opacity = value ? '1' : '0.3';
+}
+function pickShelfIcon(cls) {
+  const input = document.getElementById('fShelfIcon');
+  if (!input) return;
+  input.value = cls;
+  updateShelfIconPreview(cls);
 }

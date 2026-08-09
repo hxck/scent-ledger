@@ -5,13 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}The Scent Ledger{% endblock %}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
 </head>
 <body>
 <script>
-  // Runs before the sidebar paints, so a saved "collapsed" preference takes
-  // effect immediately instead of flashing the expanded sidebar first.
+  // Runs before the sidebar paints, so saved "collapsed" preferences take
+  // effect immediately instead of flashing the expanded state first.
   if (localStorage.getItem('sidebarCollapsed') === 'true') {
     document.documentElement.classList.add('sidebar-collapsed');
+  }
+  if (localStorage.getItem('sidebarListCollapsed') === 'true') {
+    document.documentElement.classList.add('sidebar-list-collapsed');
   }
 </script>
 
@@ -40,6 +44,7 @@
   {% if is_admin %}
     <div class="header-admin-actions">
       <a class="add-btn" href="{{ url_for('add') }}"><span class="add-btn-plus">+</span><span class="add-btn-label">Add Fragrance</span></a>
+      <a class="add-shelf-btn" href="{{ url_for('add_shelf') }}"><span class="add-btn-plus">+</span><span class="add-btn-label">Add Shelf</span></a>
       <form method="post" action="{{ url_for('logout') }}">
         <button type="submit" class="logout-btn">Logout</button>
       </form>
@@ -73,6 +78,12 @@
       </svg>
       Wishlist{% if wishlist_count %} ({{ wishlist_count }}){% endif %}
     </a>
+    <a href="{{ url_for('shelves_list') }}" class="sidebar-stats-link {{ 'active' if request.path.startswith('/shelves') else '' }}">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 9h18M3 15h18M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"></path>
+      </svg>
+      Shelves{% if shelves_count %} ({{ shelves_count }}){% endif %}
+    </a>
     {% if is_admin %}
       <a href="{{ url_for('notes_library') }}" class="sidebar-stats-link {{ 'active' if request.path == '/notes' else '' }}">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -89,25 +100,33 @@
         <span class="owned-toggle-switch {{ 'on' if sidebar_owned_only else '' }}"><span class="owned-toggle-dot"></span></span>
         <span class="owned-toggle-label">{{ 'Showing: Owned only' if sidebar_owned_only else 'Showing: All' }}</span>
       </a>
-      {% if sidebar_total == 0 %}
-        <div class="sidebar-empty">Nothing currently owned. Toggle above to see everything.</div>
-      {% else %}
-        {% for brand, items in sidebar_groups %}
-          <div class="brand-group">
-            <div class="bg-label">{{ brand }}</div>
-            <ul>
-              {% for item in items %}
-                <li>
-                  <a href="{{ url_for('detail', fragrance_id=item['id']) }}"
-                     class="{{ 'active' if current_id is defined and current_id == item['id'] else '' }}">
-                    <span class="{{ 'season-tint-' + item['season_group'] if item['season_group'] else '' }}">{{ item['name'] }}</span>
-                </a>
-              </li>
-            {% endfor %}
-          </ul>
-        </div>
-      {% endfor %}
-      {% endif %}
+      <button type="button" class="sidebar-list-toggle" id="sidebarListToggle">
+        <svg class="sidebar-list-chevron" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+        Fragrances
+      </button>
+      <div class="sidebar-fragrance-list" id="sidebarFragranceList">
+        {% if sidebar_total == 0 %}
+          <div class="sidebar-empty">Nothing currently owned. Toggle above to see everything.</div>
+        {% else %}
+          {% for brand, items in sidebar_groups %}
+            <div class="brand-group">
+              <div class="bg-label">{{ brand }}</div>
+              <ul>
+                {% for item in items %}
+                  <li>
+                    <a href="{{ url_for('detail', fragrance_id=item['id']) }}"
+                       class="{{ 'active' if current_id is defined and current_id == item['id'] else '' }}">
+                      <span class="{{ 'season-tint-' + item['season_group'] if item['season_group'] else '' }}">{{ item['name'] }}</span>
+                  </a>
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endfor %}
+        {% endif %}
+      </div>
     {% endif %}
   </aside>
 

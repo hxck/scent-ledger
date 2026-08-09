@@ -1,18 +1,17 @@
 services:
   scent-ledger:
     build: .
-    #image: scent-ledger:latest
-    #image: ghcr.io/hxck/scent-ledger:latest
+    #image: scentledger:latest
     ports:
-      - 8000:8000
+      - "8000:8000"
     environment:
       # Change this in production — now also signs the login session, not just
       # flash-message cookies, so treat it as a real secret.
-      SECRET_KEY: change-me-to-something-random
+      SECRET_KEY: "change-me-to-something-random"
       # Admin login for Add/Edit/Delete — required. Browsing the collection
       # (home, search, fragrance pages, stats) stays public either way.
-      ADMIN_USERNAME: admin
-      ADMIN_PASSWORD: change-me-to-something-random
+      ADMIN_USERNAME: "admin"
+      ADMIN_PASSWORD: "change-me-to-something-random"
       # Uncomment once this is served over HTTPS (recommended for any
       # public-facing deployment, since this is a real login form):
       # SESSION_COOKIE_SECURE: "true"
@@ -21,17 +20,12 @@ services:
       - scent_ledger_uploads:/app/static/uploads
     restart: unless-stopped
     healthcheck:
-      test:
-        - CMD
-        - python3
-        - -c
-        - import urllib.request;
-          urllib.request.urlopen('http://localhost:8000/healthz')
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
+
 volumes:
-  scent_ledger_data: null
-  scent_ledger_uploads: null
-networks: {}
+  scent_ledger_data:
+  scent_ledger_uploads:

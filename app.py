@@ -130,6 +130,10 @@ def _run_migrations(conn):
     if "fragrantica_url" not in existing_cols:
         conn.execute("ALTER TABLE fragrances ADD COLUMN fragrantica_url TEXT")
 
+    shelves_cols = {row[1] for row in conn.execute("PRAGMA table_info(shelves)").fetchall()}
+    if "icon" not in shelves_cols:
+        conn.execute("ALTER TABLE shelves ADD COLUMN icon TEXT")
+
 
 def init_db():
     schema_path = BASE_DIR / "schema.sql"
@@ -200,6 +204,22 @@ def sidebar_groups():
     return sorted(groups.items(), key=lambda kv: kv[0].lower()), len(rows), total_unfiltered
 
 
+def get_all_fragrances_grouped_by_brand():
+    """All non-wishlist fragrances grouped by brand — used for the shelf
+    "add fragrances" list. Same shape as sidebar_groups() but without the
+    owned-only filter, since a shelf is an independent grouping, not tied to
+    what you currently own."""
+    db = get_db()
+    rows = db.execute(
+        "SELECT id, brand, name FROM fragrances WHERE is_wishlist = 0 "
+        "ORDER BY brand COLLATE NOCASE, name COLLATE NOCASE"
+    ).fetchall()
+    groups = {}
+    for r in rows:
+        groups.setdefault(r["brand"], []).append(dict(r))
+    return sorted(groups.items(), key=lambda kv: kv[0].lower())
+
+
 @app.context_processor
 def inject_sidebar():
     groups, total, total_unfiltered = sidebar_groups()
@@ -217,10 +237,12 @@ def inject_sidebar():
         )
         """
     ).fetchone()["c"]
+    shelves_count = get_db().execute("SELECT COUNT(*) AS c FROM shelves").fetchone()["c"]
     return {
         "sidebar_groups": groups, "sidebar_total": total, "sidebar_brand_count": len(groups),
         "wishlist_count": wishlist_count, "sidebar_owned_only": bool(session.get("sidebar_owned_only")),
         "sidebar_total_unfiltered": total_unfiltered, "missing_notes_count": missing_notes_count,
+        "shelves_count": shelves_count,
     }
 
 
@@ -304,6 +326,17 @@ def get_fragrance_full(fragrance_id):
         (fragrance_id,),
     ).fetchall()
     frag["tags"] = [t["name"] for t in tags]
+
+    shelves = db.execute(
+        """
+        SELECT s.id, s.name, s.icon FROM shelves s
+        JOIN shelf_fragrances sf ON sf.shelf_id = s.id
+        WHERE sf.fragrance_id = ?
+        ORDER BY s.name COLLATE NOCASE
+        """,
+        (fragrance_id,),
+    ).fetchall()
+    frag["shelves"] = [dict(s) for s in shelves]
 
     return frag
 
@@ -1229,6 +1262,121 @@ def merge_note():
     db.commit()
     flash(f'Merged "{source_display}" into "{target_text}".', "success")
     return redirect(url_for("notes_library"))
+
+
+@app.route("/shelves")
+def shelves_list():
+    db = get_db()
+    rows = db.execute(
+        """
+        SELECT s.id, s.name, s.icon, COUNT(sf.fragrance_id) AS cnt
+        FROM shelves s
+        LEFT JOIN shelf_fragrances sf ON sf.shelf_id = s.id
+        GROUP BY s.id
+        ORDER BY s.name COLLATE NOCASE
+        """
+    ).fetchall()
+    shelves = [dict(r) for r in rows]
+    return render_template("shelves.html", shelves=shelves)
+
+
+def _validate_fa_icon(raw):
+    """A Font Awesome icon is 1-3 space-separated classes like "fa-solid
+    fa-heart" — validates the shape rather than checking against a real
+    icon list (there's no local copy of Font Awesome's icon metadata to
+    check against), so a typo just means no icon shows, not a rejected
+    shelf. Never blocks creating/saving a shelf either way."""
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    tokens = raw.split()
+    if not (1 <= len(tokens) <= 3):
+        return None
+    for t in tokens:
+        if not re.fullmatch(r"fa-[a-z0-9-]+", t):
+            return None
+    return " ".join(tokens)
+
+
+@app.route("/shelves/add", methods=["GET", "POST"])
+@login_required
+def add_shelf():
+    if request.method == "GET":
+        return render_template("shelf_form.html")
+    name = request.form.get("name", "").strip()
+    icon = _validate_fa_icon(request.form.get("icon", ""))
+    if not name:
+        flash("Shelf name is required.", "error")
+        return render_template("shelf_form.html", name=name, icon=icon), 400
+    db = get_db()
+    cur = db.execute("INSERT INTO shelves (name, icon) VALUES (?, ?)", (name, icon))
+    db.commit()
+    flash(f'Created shelf "{name}".', "success")
+    return redirect(url_for("shelf_detail", shelf_id=cur.lastrowid))
+
+
+@app.route("/shelves/<int:shelf_id>")
+def shelf_detail(shelf_id):
+    db = get_db()
+    shelf = db.execute("SELECT id, name, icon FROM shelves WHERE id = ?", (shelf_id,)).fetchone()
+    if shelf is None:
+        abort(404)
+    on_shelf_rows = db.execute(
+        """
+        SELECT f.id, f.brand, f.name, f.subname, f.image_filename
+        FROM fragrances f
+        JOIN shelf_fragrances sf ON sf.fragrance_id = f.id
+        WHERE sf.shelf_id = ?
+        ORDER BY f.brand COLLATE NOCASE, f.name COLLATE NOCASE
+        """,
+        (shelf_id,),
+    ).fetchall()
+    fragrances = [dict(r) for r in on_shelf_rows]
+    on_shelf_ids = {r["id"] for r in on_shelf_rows}
+    all_grouped = get_all_fragrances_grouped_by_brand() if session.get("logged_in") else []
+    return render_template(
+        "shelf_detail.html", shelf=shelf, fragrances=fragrances,
+        all_grouped=all_grouped, on_shelf_ids=on_shelf_ids,
+    )
+
+
+@app.route("/shelves/<int:shelf_id>/toggle/<int:fragrance_id>", methods=["POST"])
+@login_required
+def toggle_shelf_fragrance(shelf_id, fragrance_id):
+    db = get_db()
+    shelf = db.execute("SELECT id FROM shelves WHERE id = ?", (shelf_id,)).fetchone()
+    frag = db.execute("SELECT id FROM fragrances WHERE id = ?", (fragrance_id,)).fetchone()
+    if shelf is None or frag is None:
+        abort(404)
+    existing = db.execute(
+        "SELECT 1 FROM shelf_fragrances WHERE shelf_id = ? AND fragrance_id = ?",
+        (shelf_id, fragrance_id),
+    ).fetchone()
+    if existing:
+        db.execute(
+            "DELETE FROM shelf_fragrances WHERE shelf_id = ? AND fragrance_id = ?",
+            (shelf_id, fragrance_id),
+        )
+    else:
+        db.execute(
+            "INSERT INTO shelf_fragrances (shelf_id, fragrance_id) VALUES (?, ?)",
+            (shelf_id, fragrance_id),
+        )
+    db.commit()
+    return redirect(url_for("shelf_detail", shelf_id=shelf_id))
+
+
+@app.route("/shelves/<int:shelf_id>/delete", methods=["POST"])
+@login_required
+def delete_shelf(shelf_id):
+    db = get_db()
+    shelf = db.execute("SELECT name FROM shelves WHERE id = ?", (shelf_id,)).fetchone()
+    if shelf is None:
+        abort(404)
+    db.execute("DELETE FROM shelves WHERE id = ?", (shelf_id,))  # cascades to shelf_fragrances
+    db.commit()
+    flash(f'Deleted shelf "{shelf["name"]}".', "success")
+    return redirect(url_for("shelves_list"))
 
 
 @app.route("/wishlist")

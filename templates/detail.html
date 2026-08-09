@@ -146,6 +146,15 @@
         {% endfor %}
       </div>
     {% endif %}
+
+    {% if f['shelves'] %}
+      <div class="section-label" style="margin-top:{{ '20px' if f['tags'] else '0' }};">On Shelves</div>
+      <div class="tag-chip-list">
+        {% for s in f['shelves'] %}
+          <a class="tag-chip shelf-chip" href="{{ url_for('shelf_detail', shelf_id=s['id']) }}">{% if s['icon'] %}<i class="{{ s['icon'] }}"></i> {% endif %}{{ s['name'] }}</a>
+        {% endfor %}
+      </div>
+    {% endif %}
   </div>
 </div>
 
