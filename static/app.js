@@ -25,6 +25,18 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+// Desktop sidebar collapse: persisted via localStorage so it survives page
+// loads and navigation. The inline script in base.html applies the saved
+// state before first paint; this just wires up the toggle click itself.
+document.addEventListener('DOMContentLoaded', () => {
+  const collapseToggle = document.getElementById('sidebarCollapseToggle');
+  if (!collapseToggle) return;
+  collapseToggle.addEventListener('click', () => {
+    const collapsed = document.documentElement.classList.toggle('sidebar-collapsed');
+    localStorage.setItem('sidebarCollapsed', collapsed);
+  });
+});
+
 // Chip-style input for notes (top/middle/base) and tags.
 // Keeps a hidden <input> in sync with a comma-separated list, backing a plain HTML form submit.
 function initChipField(hiddenId, containerId, textInputId, initialValues) {

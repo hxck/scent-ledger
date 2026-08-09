@@ -7,9 +7,22 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
+<script>
+  // Runs before the sidebar paints, so a saved "collapsed" preference takes
+  // effect immediately instead of flashing the expanded sidebar first.
+  if (localStorage.getItem('sidebarCollapsed') === 'true') {
+    document.documentElement.classList.add('sidebar-collapsed');
+  }
+</script>
 
 <header class="site-header">
   <button class="menu-toggle" id="menuToggle" aria-label="Toggle menu">&#9776;</button>
+  <button class="sidebar-collapse-toggle" id="sidebarCollapseToggle" aria-label="Toggle sidebar" title="Toggle sidebar">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+      <line x1="9.5" y1="4" x2="9.5" y2="20"></line>
+    </svg>
+  </button>
   <a class="brand-mark" href="{{ url_for('home') }}" style="cursor:pointer;">
     <div class="title">The Scent Ledger</div>
     <div class="sub">Personal Fragrance Archive</div>
