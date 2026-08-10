@@ -33,6 +33,42 @@
       {% endif %}
     </div>
 
+    <div class="fill-level-panel">
+      <div class="fill-level-label">Fill Level <span class="fill-level-pct">{{ f['fill_level'] }}%</span></div>
+      <div class="fill-level-track"><div class="fill-level-bar" style="width:{{ f['fill_level'] }}%;"></div></div>
+    </div>
+
+    <div class="wear-panel">
+      <div class="wear-stats">
+        {% if f['wear_count'] %}
+          Worn {{ f['wear_count'] }} time{{ 's' if f['wear_count'] != 1 else '' }} · Last worn {{ f['last_worn_display'] }}
+        {% else %}
+          Never logged as worn
+        {% endif %}
+      </div>
+      {% if is_admin %}
+        <form method="post" action="{{ url_for('log_wear', fragrance_id=f['id']) }}" style="margin-top:10px;">
+          <button type="submit" class="btn-ghost wear-log-btn">I Wore This Today</button>
+        </form>
+        {% if f['wear_log'] %}
+          <details class="wear-history-details">
+            <summary class="section-label tag-details-summary">Wear History ({{ f['wear_count'] }})</summary>
+            <div class="wear-history-list">
+              {% for entry in f['wear_log'] %}
+                <div class="wear-history-row">
+                  <span>{{ entry['worn_at'] }}</span>
+                  <form method="post" action="{{ url_for('delete_wear_entry', entry_id=entry['id']) }}"
+                        onsubmit="return confirm('Remove this wear log entry?');">
+                    <button type="submit" class="wear-history-delete" title="Remove entry">×</button>
+                  </form>
+                </div>
+              {% endfor %}
+            </div>
+          </details>
+        {% endif %}
+      {% endif %}
+    </div>
+
     {% if f['price'] is not none or f['purchase_price'] is not none or f['is_gift'] %}
       <div class="price-panel">
         {% if f['price'] is not none %}
@@ -72,9 +108,16 @@
       {{ f['name'] }}
       {% if f['is_discontinued'] %}<sup class="discontinued-star" title="Discontinued">⭐</sup>{% endif %}
     </h1>
-    {% if f['subname'] %}<p class="detail-sub">{{ f['subname'] }}</p>{% endif %}
+    {% if f['subname'] %}
+      <a class="detail-sub" href="https://www.fragrantica.com/search/?query={{ f['subname'] | urlencode }}" target="_blank" rel="noopener noreferrer">{{ f['subname'] }} ↗</a>
+    {% endif %}
     {% if f['fragrantica_url'] %}
       <a href="{{ f['fragrantica_url'] }}" target="_blank" rel="noopener noreferrer" class="fragrantica-link">View on Fragrantica ↗</a>
+    {% endif %}
+    {% if f['rating'] %}
+      <div class="detail-rating" title="{{ f['rating'] }} out of 5">
+        {% for i in range(1, 6) %}<span class="star {{ 'filled' if i <= f['rating'] else '' }}">★</span>{% endfor %}
+      </div>
     {% endif %}
 
     {% if is_admin %}

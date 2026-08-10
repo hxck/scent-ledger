@@ -1,9 +1,11 @@
+import csv
 import functools
 import hmac
 import io
 import ipaddress
 import json
 import os
+import random
 import re
 import socket
 import sqlite3
@@ -11,10 +13,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 from flask import (
-    Flask, g, render_template, request, redirect, url_for, flash, abort, session
+    Flask, g, render_template, request, redirect, url_for, flash, abort, session, Response
 )
 from werkzeug.utils import secure_filename
 from PIL import Image
@@ -136,6 +139,11 @@ def _run_migrations(conn):
     if "is_private" not in shelves_cols:
         conn.execute("ALTER TABLE shelves ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0")
 
+    if "rating" not in existing_cols:
+        conn.execute("ALTER TABLE fragrances ADD COLUMN rating INTEGER")
+    if "fill_level" not in existing_cols:
+        conn.execute("ALTER TABLE fragrances ADD COLUMN fill_level INTEGER NOT NULL DEFAULT 100")
+
 
 def init_db():
     schema_path = BASE_DIR / "schema.sql"
@@ -153,6 +161,24 @@ init_db()
 # ---------------------------------------------------------------------------
 # Small query helpers
 # ---------------------------------------------------------------------------
+def _humanize_days_ago(iso_datetime_str):
+    """"2026-08-01 12:00:00" -> "today" / "yesterday" / "N days ago". Returns
+    None on anything unparseable rather than raising — this is display text,
+    never something that should break a page render."""
+    if not iso_datetime_str:
+        return None
+    try:
+        worn = datetime.strptime(iso_datetime_str.split(".")[0], "%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return None
+    days = (datetime.utcnow() - worn).days
+    if days <= 0:
+        return "today"
+    if days == 1:
+        return "yesterday"
+    return f"{days} days ago"
+
+
 def _season_color_group(season_csv):
     """Classifies a fragrance's seasons for sidebar color-coding:
     - "warm" (Spring and/or Summer only) — creamy red-orange
@@ -222,6 +248,7 @@ def get_all_fragrances_grouped_by_brand():
     return sorted(groups.items(), key=lambda kv: kv[0].lower())
 
 
+
 @app.context_processor
 def inject_sidebar():
     groups, total, total_unfiltered = sidebar_groups()
@@ -264,13 +291,15 @@ def get_all_fragrances_light(wishlist=False, respect_owned_filter=False):
     where that's wanted, without silently changing other listings."""
     db = get_db()
     query = """
-        SELECT f.id, f.brand, f.name, f.subname, f.image_filename,
+        SELECT f.id, f.brand, f.name, f.subname, f.image_filename, f.daynight, f.price,
                GROUP_CONCAT(DISTINCT t.name) AS tag_list,
-               GROUP_CONCAT(DISTINCT n.note_text) AS note_list
+               GROUP_CONCAT(DISTINCT n.note_text) AS note_list,
+               GROUP_CONCAT(DISTINCT s.season) AS season_list
         FROM fragrances f
         LEFT JOIN fragrance_tags ft ON ft.fragrance_id = f.id
         LEFT JOIN tags t ON t.id = ft.tag_id
         LEFT JOIN notes n ON n.fragrance_id = f.id
+        LEFT JOIN seasons s ON s.fragrance_id = f.id
         WHERE f.is_wishlist = ?
     """
     if respect_owned_filter and not wishlist and session.get("sidebar_owned_only"):
@@ -282,9 +311,11 @@ def get_all_fragrances_light(wishlist=False, respect_owned_filter=False):
         d = dict(r)
         tag_list = d.pop("tag_list")
         note_list = d.pop("note_list")
+        season_list = d.pop("season_list")
         tags = tag_list.split(",") if tag_list else []
         notes = note_list.split(",") if note_list else []
         d["tags"] = [t.strip() for t in (tags + notes) if t.strip()]
+        d["seasons"] = season_list.split(",") if season_list else []
         result.append(d)
     return result
 
@@ -342,6 +373,15 @@ def get_fragrance_full(fragrance_id):
         (fragrance_id,),
     ).fetchall()
     frag["shelves"] = [dict(s) for s in shelves]
+
+    wear_rows = db.execute(
+        "SELECT id, worn_at FROM wear_log WHERE fragrance_id = ? ORDER BY worn_at DESC",
+        (fragrance_id,),
+    ).fetchall()
+    frag["wear_log"] = [dict(w) for w in wear_rows]
+    frag["wear_count"] = len(frag["wear_log"])
+    frag["last_worn"] = frag["wear_log"][0]["worn_at"] if frag["wear_log"] else None
+    frag["last_worn_display"] = _humanize_days_ago(frag["last_worn"])
 
     return frag
 
@@ -469,6 +509,10 @@ def stats_summary():
         "SELECT COUNT(purchase_price) AS purchased_count, SUM(purchase_price) AS total_spent "
         "FROM fragrances WHERE is_wishlist = 0"
     ).fetchone()
+    rating_row = db.execute(
+        "SELECT COUNT(rating) AS rated_count, AVG(rating) AS avg_rating "
+        "FROM fragrances WHERE is_wishlist = 0"
+    ).fetchone()
     return {
         "total_bottles": total_bottles,
         "total_houses": total_houses,
@@ -476,6 +520,8 @@ def stats_summary():
         "total_unique_notes": total_unique_notes,
         "purchased_count": spend_row["purchased_count"],
         "total_spent": round(spend_row["total_spent"], 2) if spend_row["total_spent"] is not None else None,
+        "rated_count": rating_row["rated_count"],
+        "avg_rating": round(rating_row["avg_rating"], 1) if rating_row["avg_rating"] is not None else None,
     }
 
 
@@ -525,6 +571,49 @@ def stats_top_houses(limit=5):
         (limit,),
     ).fetchall()
     return _with_bar_pct([dict(r) for r in rows])
+
+
+def stats_most_worn(limit=5):
+    db = get_db()
+    rows = db.execute(
+        """
+        SELECT f.id, (f.brand || ' ' || f.name) AS label, COUNT(w.id) AS cnt
+        FROM fragrances f
+        JOIN wear_log w ON w.fragrance_id = f.id
+        WHERE f.is_wishlist = 0
+        GROUP BY f.id
+        ORDER BY cnt DESC, label COLLATE NOCASE
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return _with_bar_pct([dict(r) for r in rows])
+
+
+def stats_needs_love(limit=8, stale_days=90):
+    """Currently-owned fragrances that either have never been logged as
+    worn, or haven't been in stale_days+ — a nudge to actually use what you
+    have, not just catalog it."""
+    db = get_db()
+    rows = db.execute(
+        """
+        SELECT f.id, f.brand, f.name, MAX(w.worn_at) AS last_worn
+        FROM fragrances f
+        LEFT JOIN wear_log w ON w.fragrance_id = f.id
+        WHERE f.is_wishlist = 0 AND f.currently_owned = 1
+        GROUP BY f.id
+        HAVING last_worn IS NULL OR last_worn <= datetime('now', ?)
+        ORDER BY (last_worn IS NULL) DESC, last_worn ASC
+        LIMIT ?
+        """,
+        (f"-{stale_days} days", limit),
+    ).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["last_worn_display"] = _humanize_days_ago(d["last_worn"]) if d["last_worn"] else "never"
+        result.append(d)
+    return result
 
 
 def stats_price_extremes():
@@ -1035,6 +1124,22 @@ def _handle_form_submit(mode, fragrance_id, existing=None):
 
     fragrantica_url = request.form.get("fragrantica_url", "").strip() or None
 
+    rating_raw = request.form.get("rating", "").strip()
+    try:
+        rating = int(rating_raw) if rating_raw else None
+        if rating is not None and not (1 <= rating <= 5):
+            rating = None
+    except ValueError:
+        rating = None
+
+    fill_level_raw = request.form.get("fill_level", "").strip()
+    try:
+        fill_level = int(fill_level_raw) if fill_level_raw else 100
+        if not (0 <= fill_level <= 100):
+            fill_level = 100
+    except ValueError:
+        fill_level = 100
+
     if not brand or not name:
         flash("Brand and Name are required.", "error")
         stub = existing or {}
@@ -1044,7 +1149,7 @@ def _handle_form_submit(mode, fragrance_id, existing=None):
             price=price, purchase_price=purchase_price,
             is_gift=is_gift, is_discontinued=is_discontinued, is_wishlist=is_wishlist,
             currently_owned=currently_owned, gave_away=gave_away, bottles_owned=bottles_owned,
-            fragrantica_url=fragrantica_url,
+            fragrantica_url=fragrantica_url, rating=rating, fill_level=fill_level,
         )
         return render_template("form.html", mode=mode, f=stub), 400
 
@@ -1075,12 +1180,14 @@ def _handle_form_submit(mode, fragrance_id, existing=None):
             INSERT INTO fragrances
                 (brand, name, subname, image_filename, description, daynight,
                  price, purchase_price, is_gift, is_discontinued, is_wishlist,
-                 currently_owned, gave_away, bottles_owned, fragrantica_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 currently_owned, gave_away, bottles_owned, fragrantica_url,
+                 rating, fill_level)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (brand, name, subname, image_filename, description, daynight,
              price, purchase_price, is_gift, is_discontinued, is_wishlist,
-             currently_owned, gave_away, bottles_owned, fragrantica_url),
+             currently_owned, gave_away, bottles_owned, fragrantica_url,
+             rating, fill_level),
         )
         fragrance_id = cur.lastrowid
     else:
@@ -1089,12 +1196,14 @@ def _handle_form_submit(mode, fragrance_id, existing=None):
             UPDATE fragrances
             SET brand = ?, name = ?, subname = ?, image_filename = ?, description = ?, daynight = ?,
                 price = ?, purchase_price = ?, is_gift = ?, is_discontinued = ?, is_wishlist = ?,
-                currently_owned = ?, gave_away = ?, bottles_owned = ?, fragrantica_url = ?
+                currently_owned = ?, gave_away = ?, bottles_owned = ?, fragrantica_url = ?,
+                rating = ?, fill_level = ?
             WHERE id = ?
             """,
             (brand, name, subname, image_filename, description, daynight,
              price, purchase_price, is_gift, is_discontinued, is_wishlist,
-             currently_owned, gave_away, bottles_owned, fragrantica_url, fragrance_id),
+             currently_owned, gave_away, bottles_owned, fragrantica_url,
+             rating, fill_level, fragrance_id),
         )
 
     replace_seasons(db, fragrance_id, seasons)
@@ -1417,6 +1526,149 @@ def delete_shelf(shelf_id):
     return redirect(url_for("shelves_list"))
 
 
+@app.route("/fragrance/<int:fragrance_id>/wear", methods=["POST"])
+@login_required
+def log_wear(fragrance_id):
+    db = get_db()
+    frag = db.execute("SELECT id FROM fragrances WHERE id = ?", (fragrance_id,)).fetchone()
+    if frag is None:
+        abort(404)
+    db.execute("INSERT INTO wear_log (fragrance_id) VALUES (?)", (fragrance_id,))
+    db.commit()
+    flash("Logged today's wear.", "success")
+    return redirect(url_for("detail", fragrance_id=fragrance_id))
+
+
+@app.route("/wear-log/<int:entry_id>/delete", methods=["POST"])
+@login_required
+def delete_wear_entry(entry_id):
+    db = get_db()
+    entry = db.execute("SELECT fragrance_id FROM wear_log WHERE id = ?", (entry_id,)).fetchone()
+    if entry is None:
+        abort(404)
+    db.execute("DELETE FROM wear_log WHERE id = ?", (entry_id,))
+    db.commit()
+    return redirect(url_for("detail", fragrance_id=entry["fragrance_id"]))
+
+
+def _current_season_and_daynight():
+    """Meteorological season by month, Northern-hemisphere assumption (no
+    location is tracked anywhere in this app to do better) — documented in
+    the README as a known limitation for Southern-hemisphere users."""
+    now = datetime.now()
+    month, hour = now.month, now.hour
+    if month in (3, 4, 5):
+        season = "Spring"
+    elif month in (6, 7, 8):
+        season = "Summer"
+    elif month in (9, 10, 11):
+        season = "Fall"
+    else:
+        season = "Winter"
+    daynight = "Day" if 6 <= hour < 18 else "Night"
+    return season, daynight
+
+
+def _pick_random_fragrance():
+    """Picks a fragrance from what's currently owned, weighted toward the
+    current season/day-night when possible, falling back to any owned
+    fragrance if nothing matches (or if none has season/day-night set at
+    all). Returns (fragrance_id_or_None, season, daynight)."""
+    db = get_db()
+    season, daynight = _current_season_and_daynight()
+    weighted_rows = db.execute(
+        """
+        SELECT DISTINCT f.id
+        FROM fragrances f
+        JOIN seasons s ON s.fragrance_id = f.id
+        WHERE f.is_wishlist = 0 AND f.currently_owned = 1 AND s.season = ?
+          AND (f.daynight = ? OR f.daynight = 'Both' OR f.daynight IS NULL OR f.daynight = '')
+        """,
+        (season, daynight),
+    ).fetchall()
+    candidates = [r["id"] for r in weighted_rows]
+    if not candidates:
+        rows = db.execute(
+            "SELECT id FROM fragrances WHERE is_wishlist = 0 AND currently_owned = 1"
+        ).fetchall()
+        candidates = [r["id"] for r in rows]
+    if not candidates:
+        return None, season, daynight
+    return random.choice(candidates), season, daynight
+
+
+@app.route("/random")
+def random_pick():
+    fragrance_id, season, daynight = _pick_random_fragrance()
+    if fragrance_id is None:
+        flash("Nothing currently owned to pick from.", "error")
+        return redirect(url_for("home"))
+    flash(f"Today's pick — weighted for {season}, {daynight.lower()}.", "success")
+    return redirect(url_for("detail", fragrance_id=fragrance_id))
+
+
+@app.route("/export/csv")
+@login_required
+def export_csv():
+    db = get_db()
+    fragrances = db.execute(
+        "SELECT * FROM fragrances ORDER BY brand COLLATE NOCASE, name COLLATE NOCASE"
+    ).fetchall()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Brand", "Name", "Subname", "Description", "Day/Night", "Seasons",
+        "Top Notes", "Middle Notes", "Base Notes", "Tags",
+        "Current Price", "Purchase Price", "Rating", "Fill Level %",
+        "Currently Owned", "Bottles Owned", "Is Gift", "Is Discontinued",
+        "Gave Away", "Is Wishlist", "Fragrantica URL", "Wear Count", "Last Worn",
+    ])
+    for f in fragrances:
+        fid = f["id"]
+        seasons = [r["season"] for r in db.execute(
+            "SELECT season FROM seasons WHERE fragrance_id = ?", (fid,)
+        ).fetchall()]
+        notes_rows = db.execute(
+            "SELECT tier, note_text FROM notes WHERE fragrance_id = ? ORDER BY tier, position", (fid,)
+        ).fetchall()
+        notes_by_tier = {"top": [], "middle": [], "base": []}
+        for n in notes_rows:
+            notes_by_tier[n["tier"]].append(n["note_text"])
+        tags = [r["name"] for r in db.execute(
+            "SELECT t.name FROM tags t JOIN fragrance_tags ft ON ft.tag_id = t.id WHERE ft.fragrance_id = ?",
+            (fid,),
+        ).fetchall()]
+        wear_rows = db.execute(
+            "SELECT worn_at FROM wear_log WHERE fragrance_id = ? ORDER BY worn_at DESC", (fid,)
+        ).fetchall()
+        writer.writerow([
+            f["brand"], f["name"], f["subname"] or "", f["description"] or "", f["daynight"] or "",
+            ", ".join(seasons),
+            "; ".join(notes_by_tier["top"]), "; ".join(notes_by_tier["middle"]), "; ".join(notes_by_tier["base"]),
+            ", ".join(tags),
+            f["price"] if f["price"] is not None else "",
+            f["purchase_price"] if f["purchase_price"] is not None else "",
+            f["rating"] if f["rating"] is not None else "",
+            f["fill_level"],
+            "Yes" if f["currently_owned"] else "No",
+            f["bottles_owned"],
+            "Yes" if f["is_gift"] else "No",
+            "Yes" if f["is_discontinued"] else "No",
+            "Yes" if f["gave_away"] else "No",
+            "Yes" if f["is_wishlist"] else "No",
+            f["fragrantica_url"] or "",
+            len(wear_rows),
+            wear_rows[0]["worn_at"] if wear_rows else "",
+        ])
+
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=scent_ledger_export.csv"},
+    )
+
+
 @app.route("/wishlist")
 def wishlist():
     fragrances = get_all_fragrances_light(wishlist=True)
@@ -1439,6 +1691,10 @@ def search():
     q = request.args.get("q", "").strip().lower()
     tags_param = request.args.get("tags", "")
     active_tags = [t for t in tags_param.split(",") if t]
+    active_seasons = [s for s in request.args.getlist("season") if s in SEASON_CHOICES]
+    active_daynight = request.args.get("daynight", "").strip()
+    price_min_raw = request.args.get("price_min", "").strip()
+    price_max_raw = request.args.get("price_max", "").strip()
 
     fragrances = get_all_fragrances_light()
 
@@ -1458,6 +1714,35 @@ def search():
             if all(t in [x.lower() for x in f["tags"]] for t in active_tags_lower)
         ]
 
+    if active_seasons:
+        # OR across seasons — a fragrance usually has one or two, requiring
+        # every checked season at once would rarely match anything.
+        fragrances = [f for f in fragrances if any(s in f["seasons"] for s in active_seasons)]
+
+    if active_daynight in DAYNIGHT_CHOICES:
+        # "Both" on the fragrance counts as a match for either Day or Night.
+        fragrances = [
+            f for f in fragrances
+            if f["daynight"] == active_daynight or f["daynight"] == "Both"
+        ]
+
+    price_min = None
+    price_max = None
+    try:
+        if price_min_raw:
+            price_min = float(price_min_raw)
+    except ValueError:
+        price_min = None
+    try:
+        if price_max_raw:
+            price_max = float(price_max_raw)
+    except ValueError:
+        price_max = None
+    if price_min is not None:
+        fragrances = [f for f in fragrances if f["price"] is not None and f["price"] >= price_min]
+    if price_max is not None:
+        fragrances = [f for f in fragrances if f["price"] is not None and f["price"] <= price_max]
+
     search_terms = get_search_term_counts()
 
     return render_template(
@@ -1466,6 +1751,12 @@ def search():
         q=q,
         active_tags=active_tags,
         search_terms=search_terms,
+        active_seasons=active_seasons,
+        active_daynight=active_daynight,
+        price_min=price_min_raw,
+        price_max=price_max_raw,
+        season_choices=SEASON_CHOICES,
+        daynight_choices=DAYNIGHT_CHOICES,
     )
 
 
@@ -1486,6 +1777,8 @@ def stats():
         daynight_total=daynight_total,
         most_expensive=most_expensive,
         cheapest=cheapest,
+        most_worn=stats_most_worn(5),
+        needs_love=stats_needs_love(8),
     )
 
 

@@ -6,6 +6,9 @@
 <div class="hero" style="padding-bottom:24px;margin-bottom:32px;">
   <h1 style="font-size:clamp(26px,3vw,36px);">Collection Stats</h1>
   <p>A live snapshot of your shelf — updates automatically as you add fragrances.</p>
+  {% if is_admin and total_bottles > 0 %}
+    <a class="btn-ghost" href="{{ url_for('export_csv') }}" style="display:inline-block;margin-top:14px;">Export as CSV</a>
+  {% endif %}
 </div>
 
 {% if total_bottles == 0 %}
@@ -41,6 +44,12 @@
       <div class="stat-card">
         <div class="stat-value">{{ total_spent | money }}</div>
         <div class="stat-label">Total Spent ({{ purchased_count }}/{{ total_bottles }})</div>
+      </div>
+    {% endif %}
+    {% if avg_rating is not none %}
+      <div class="stat-card">
+        <div class="stat-value">{{ avg_rating }} <span style="font-size:0.5em;color:var(--gold);">★</span></div>
+        <div class="stat-label">Avg. Rating ({{ rated_count }}/{{ total_bottles }})</div>
       </div>
     {% endif %}
   </div>
@@ -175,6 +184,43 @@
           </div>
         </a>
       {% endif %}
+    </div>
+  {% endif %}
+
+  {% if most_worn or needs_love %}
+    <div class="stats-grid">
+      <div class="stats-panel">
+        <div class="section-label">Most Worn</div>
+        {% if most_worn %}
+          <div class="bar-chart">
+            {% for row in most_worn %}
+              <div class="bar-row">
+                <a class="bar-label" href="{{ url_for('detail', fragrance_id=row.id) }}" title="{{ row.label }}">{{ row.label }}</a>
+                <div class="bar-track"><div class="bar-fill" data-target="{{ row.pct }}" style="width:0%;"></div></div>
+                <div class="bar-count">{{ row.cnt }}</div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="stats-empty-note">No wear logged yet — hit "I Wore This Today" on a fragrance's page.</p>
+        {% endif %}
+      </div>
+
+      <div class="stats-panel">
+        <div class="section-label">Needs Some Love <span class="section-label-note">(owned, not worn in 90+ days)</span></div>
+        {% if needs_love %}
+          <ul class="needs-love-list">
+            {% for row in needs_love %}
+              <li>
+                <a href="{{ url_for('detail', fragrance_id=row.id) }}">{{ row.brand }} {{ row.name }}</a>
+                <span class="needs-love-when">{{ row.last_worn_display }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="stats-empty-note">Everything's been worn recently — nice.</p>
+        {% endif %}
+      </div>
     </div>
   {% endif %}
 

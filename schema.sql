@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS fragrances (
     gave_away       INTEGER NOT NULL DEFAULT 0,
     bottles_owned   INTEGER NOT NULL DEFAULT 1,
     fragrantica_url TEXT,
+    rating          INTEGER,
+    fill_level      INTEGER NOT NULL DEFAULT 100,
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -71,9 +73,18 @@ CREATE TABLE IF NOT EXISTS shelf_fragrances (
     PRIMARY KEY (shelf_id, fragrance_id)
 );
 
+-- One row per "I wore this today" click — a log, not a single field, since
+-- the point is tracking frequency and recency over time.
+CREATE TABLE IF NOT EXISTS wear_log (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    fragrance_id    INTEGER NOT NULL REFERENCES fragrances(id) ON DELETE CASCADE,
+    worn_at         TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_fragrances_brand ON fragrances(brand);
 CREATE INDEX IF NOT EXISTS idx_notes_fragrance ON notes(fragrance_id);
 CREATE INDEX IF NOT EXISTS idx_fragrance_tags_fragrance ON fragrance_tags(fragrance_id);
 CREATE INDEX IF NOT EXISTS idx_fragrance_tags_tag ON fragrance_tags(tag_id);
 CREATE INDEX IF NOT EXISTS idx_shelf_fragrances_shelf ON shelf_fragrances(shelf_id);
 CREATE INDEX IF NOT EXISTS idx_shelf_fragrances_fragrance ON shelf_fragrances(fragrance_id);
+CREATE INDEX IF NOT EXISTS idx_wear_log_fragrance ON wear_log(fragrance_id);

@@ -74,8 +74,9 @@
     {% endif %}
 
     <div class="field">
-      <label for="fSubname">Subname / Inspired By <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
-      <input type="text" id="fSubname" name="subname" placeholder="e.g. inspired by Kayali Vanilla 28" value="{{ fd.get('subname', '') }}">
+      <label for="fSubname">This Fragrance Is a Dupe Of <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
+      <input type="text" id="fSubname" name="subname" placeholder="e.g. Xerjoff Erba Pura" value="{{ fd.get('subname', '') }}">
+      <div class="field-note">Shown under the name, linking to a Fragrantica search for it — handy since you likely don't own the original to link to directly.</div>
     </div>
 
     <div class="field">
@@ -128,6 +129,24 @@
     <div class="field">
       <label for="fBottlesOwned">Bottles Owned <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(lifetime total, including any you no longer have)</span></label>
       <input type="number" id="fBottlesOwned" name="bottles_owned" min="0" step="1" style="max-width:120px;" value="{{ fd.get('bottles_owned', 1) }}">
+    </div>
+
+    <div class="field">
+      <label>Rating <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
+      <div class="star-rating-picker" id="starRatingPicker">
+        <input type="hidden" name="rating" id="fRating" value="{{ fd.get('rating') or '' }}">
+        {% for i in range(1, 6) %}
+          <button type="button" class="star-btn" data-value="{{ i }}" onclick="setRating({{ i }})">★</button>
+        {% endfor %}
+        <button type="button" class="star-clear-btn" onclick="setRating(0)">Clear</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="fFillLevel">Fill Level <span id="fillLevelDisplay" style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">({{ fd.get('fill_level', 100) }}%)</span></label>
+      <input type="range" id="fFillLevel" name="fill_level" min="0" max="100" step="5"
+             value="{{ fd.get('fill_level', 100) }}"
+             oninput="document.getElementById('fillLevelDisplay').textContent = '(' + this.value + '%)'">
     </div>
 
     <div class="field">
@@ -241,6 +260,14 @@
   }
   giftCheckbox.addEventListener('change', syncGiftState);
   syncGiftState(); // apply immediately in case Gift is already checked (edit mode)
+
+  function setRating(value) {
+    document.getElementById('fRating').value = value > 0 ? value : '';
+    document.querySelectorAll('.star-btn').forEach((btn) => {
+      btn.classList.toggle('filled', Number(btn.dataset.value) <= value);
+    });
+  }
+  setRating(Number(document.getElementById('fRating').value) || 0); // reflect existing value (edit mode)
 
   const chipTop = initChipField('tierTopHidden', 'tierTopChips', 'tierTopText', {{ (notes.get('top', []) | note_texts) | tojson }});
   const chipMiddle = initChipField('tierMiddleHidden', 'tierMiddleChips', 'tierMiddleText', {{ (notes.get('middle', []) | note_texts) | tojson }});

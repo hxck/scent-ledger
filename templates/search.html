@@ -3,7 +3,14 @@
 {% block breadcrumbs %}<span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Search</span>{% endblock %}
 {% block content %}
 
-{% macro tag_url(new_q, new_tags) %}{{ url_for('search', q=new_q if new_q else None, tags=(new_tags|join(',')) if new_tags else None) }}{% endmacro %}
+{% macro filter_url(new_q=q, new_tags=active_tags, new_seasons=active_seasons, new_daynight=active_daynight, new_price_min=price_min, new_price_max=price_max) %}{{ url_for('search',
+  q=new_q if new_q else None,
+  tags=(new_tags|join(',')) if new_tags else None,
+  season=new_seasons if new_seasons else None,
+  daynight=new_daynight if new_daynight else None,
+  price_min=new_price_min if new_price_min else None,
+  price_max=new_price_max if new_price_max else None
+) }}{% endmacro %}
 
 <div class="hero" style="padding-bottom:24px;margin-bottom:24px;">
   <h1 style="font-size:clamp(26px,3vw,36px);">Search the Shelf</h1>
@@ -13,16 +20,29 @@
 <form class="search-page-bar" method="get" action="{{ url_for('search') }}">
   <input type="text" name="q" value="{{ q }}" placeholder="Search fragrances, brands, tags, notes…">
   {% for t in active_tags %}<input type="hidden" name="tags" value="{{ t }}">{% endfor %}
+  {% for s in active_seasons %}<input type="hidden" name="season" value="{{ s }}">{% endfor %}
+  {% if active_daynight %}<input type="hidden" name="daynight" value="{{ active_daynight }}">{% endif %}
+  {% if price_min %}<input type="hidden" name="price_min" value="{{ price_min }}">{% endif %}
+  {% if price_max %}<input type="hidden" name="price_max" value="{{ price_max }}">{% endif %}
   <button type="submit">Search</button>
 </form>
 
-{% if active_tags %}
+{% set has_active_filters = active_tags or active_seasons or active_daynight or price_min or price_max %}
+{% if has_active_filters %}
   <div class="active-filters">
     {% for t in active_tags %}
-      {% set remaining = active_tags | reject('equalto', t) | list %}
-      <a class="tag-chip active" href="{{ tag_url(q, remaining) }}">{{ t }} ×</a>
+      <a class="tag-chip active" href="{{ filter_url(new_tags=(active_tags | reject('equalto', t) | list)) }}">{{ t }} ×</a>
     {% endfor %}
-    <a class="tag-chip" href="{{ tag_url(q, []) }}">Clear tags</a>
+    {% for s in active_seasons %}
+      <a class="tag-chip active" href="{{ filter_url(new_seasons=(active_seasons | reject('equalto', s) | list)) }}">{{ s }} ×</a>
+    {% endfor %}
+    {% if active_daynight %}
+      <a class="tag-chip active" href="{{ filter_url(new_daynight='') }}">{{ active_daynight }} ×</a>
+    {% endif %}
+    {% if price_min or price_max %}
+      <a class="tag-chip active" href="{{ filter_url(new_price_min='', new_price_max='') }}">${{ price_min or '0' }}–${{ price_max or '∞' }} ×</a>
+    {% endif %}
+    <a class="tag-chip" href="{{ url_for('search') }}">Clear all</a>
   </div>
 {% endif %}
 
@@ -47,7 +67,7 @@
         {% set next_tags = (active_tags | reject('equalto', row['term']) | list) if is_selected else (active_tags + [row['term']]) %}
         {% set term_kind = 'both' if (row['is_tag'] and row['is_note']) else ('tag' if row['is_tag'] else 'note') %}
         <div class="tag-pill-wrap term-{{ term_kind }} {{ 'selected' if is_selected else '' }}">
-          <a class="tag-pill" href="{{ tag_url(q, next_tags) }}" title="{{ 'Tag & Note' if term_kind == 'both' else ('Tag' if term_kind == 'tag' else 'Note') }}">
+          <a class="tag-pill" href="{{ filter_url(new_tags=next_tags) }}" title="{{ 'Tag & Note' if term_kind == 'both' else ('Tag' if term_kind == 'tag' else 'Note') }}">
             {% if row['is_tag'] %}
               <svg class="term-icon term-icon-tag" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
             {% endif %}
@@ -67,6 +87,53 @@
       {% endfor %}
     </div>
   {% endif %}
+</details>
+
+<details class="tag-details" {{ 'open' if (active_seasons or active_daynight or price_min or price_max) else '' }}>
+  <summary class="section-label tag-details-summary">More Filters{% if active_seasons or active_daynight or price_min or price_max %} (active){% endif %}</summary>
+  <form method="get" action="{{ url_for('search') }}" class="search-filters-panel">
+    <input type="hidden" name="q" value="{{ q }}">
+    {% for t in active_tags %}<input type="hidden" name="tags" value="{{ t }}">{% endfor %}
+
+    <div class="filter-group">
+      <div class="filter-group-label">Season</div>
+      <div class="checkbox-row">
+        {% for s in season_choices %}
+          <label class="pill-check">
+            <input type="checkbox" name="season" value="{{ s }}" {{ 'checked' if s in active_seasons else '' }}>
+            <span>{{ s }}</span>
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <div class="filter-group-label">Day / Night</div>
+      <div class="checkbox-row">
+        <label class="pill-check">
+          <input type="radio" name="daynight" value="" {{ 'checked' if not active_daynight else '' }}>
+          <span>Any</span>
+        </label>
+        {% for d in daynight_choices %}
+          <label class="pill-check">
+            <input type="radio" name="daynight" value="{{ d }}" {{ 'checked' if active_daynight == d else '' }}>
+            <span>{{ d }}</span>
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <div class="filter-group-label">Price Range</div>
+      <div class="price-range-row">
+        <input type="number" name="price_min" placeholder="Min" min="0" step="1" value="{{ price_min }}">
+        <span>–</span>
+        <input type="number" name="price_max" placeholder="Max" min="0" step="1" value="{{ price_max }}">
+      </div>
+    </div>
+
+    <button type="submit" class="btn-ghost">Apply Filters</button>
+  </form>
 </details>
 
 <div class="results-count">{{ fragrances|length }} result{{ 's' if fragrances|length != 1 else '' }}</div>
