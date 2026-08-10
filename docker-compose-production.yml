@@ -10,6 +10,7 @@ services:
       ADMIN_PASSWORD: change-me-to-something-random
       # Uncomment once this is served over HTTPS
       # SESSION_COOKIE_SECURE: "true"
+      TZ: "${TZ:-Etc/UTC}"
     volumes:
       - scent_ledger_data:/app/data
       - scent_ledger_uploads:/app/static/uploads

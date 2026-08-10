@@ -2,6 +2,10 @@ Flask==3.0.3
 gunicorn==22.0.0
 Pillow==10.4.0
 Werkzeug==3.0.3
+# Pure-Python IANA timezone database. python:3.12-slim doesn't ship the OS-level
+# tzdata package, so zoneinfo.ZoneInfo("Australia/Sydney") etc. would otherwise
+# fail to resolve — this makes it work regardless of the base image.
+tzdata
 # Loosely pinned rather than an exact version: this was written without live
 # PyPI access to confirm the current latest release. Bump/pin tighter once
 # you've confirmed a version works for you.

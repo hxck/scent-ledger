@@ -81,6 +81,15 @@ CREATE TABLE IF NOT EXISTS wear_log (
     worn_at         TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Small generic key-value store for app-level settings that come from
+-- environment variables at startup but need to be readable at request time
+-- without re-touching the environment on every call. First (and currently
+-- only) use: the configured TZ, synced in on every app startup.
+CREATE TABLE IF NOT EXISTS app_settings (
+    key             TEXT PRIMARY KEY,
+    value           TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_fragrances_brand ON fragrances(brand);
 CREATE INDEX IF NOT EXISTS idx_notes_fragrance ON notes(fragrance_id);
 CREATE INDEX IF NOT EXISTS idx_fragrance_tags_fragrance ON fragrance_tags(fragrance_id);

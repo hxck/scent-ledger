@@ -14,6 +14,7 @@ import urllib.parse
 import urllib.request
 import uuid
 from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pathlib import Path
 
 from flask import (
@@ -151,8 +152,21 @@ def init_db():
     with open(schema_path, "r") as f:
         conn.executescript(f.read())
     _run_migrations(conn)
+    _sync_settings_from_env(conn)
     conn.commit()
     conn.close()
+
+
+def _sync_settings_from_env(conn):
+    """Re-syncs env-sourced settings into app_settings on every startup, so
+    a changed TZ takes effect on restart rather than sticking with whatever
+    was there from the very first run."""
+    tz = os.environ.get("TZ", "Etc/UTC").strip() or "Etc/UTC"
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES ('timezone', ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (tz,),
+    )
 
 
 init_db()
@@ -161,6 +175,11 @@ init_db()
 # ---------------------------------------------------------------------------
 # Small query helpers
 # ---------------------------------------------------------------------------
+def _get_setting(key, default=None):
+    row = get_db().execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
 def _humanize_days_ago(iso_datetime_str):
     """"2026-08-01 12:00:00" -> "today" / "yesterday" / "N days ago". Returns
     None on anything unparseable rather than raising — this is display text,
@@ -1569,20 +1588,71 @@ def delete_wear_entry(entry_id):
     return redirect(url_for("detail", fragrance_id=entry["fragrance_id"]))
 
 
+# Best-effort Southern-Hemisphere IANA zone identifiers, for guessing season
+# correctly regardless of where the TZ setting points. Not exhaustive down to
+# every small territory, and inherently fuzzy near the equator (e.g. "season"
+# doesn't mean much in Singapore either way) — but far better than always
+# assuming Northern, which was the only option before TZ was configurable.
+# Australia/* and Antarctica/* are handled separately below since every zone
+# in those two regions is Southern.
+_SOUTHERN_HEMISPHERE_ZONES = frozenset({
+    "Pacific/Auckland", "Pacific/Chatham", "Pacific/Fiji", "Pacific/Tongatapu",
+    "Pacific/Noumea", "Pacific/Port_Moresby", "Pacific/Guadalcanal", "Pacific/Efate",
+    "Pacific/Apia", "Pacific/Easter", "Pacific/Pitcairn", "Pacific/Norfolk",
+    "Pacific/Marquesas", "Pacific/Tahiti", "Pacific/Rarotonga", "Pacific/Wallis",
+    "Pacific/Funafuti", "Pacific/Nauru", "Pacific/Galapagos", "Pacific/Pago_Pago",
+    "Pacific/Niue",
+    "Indian/Antananarivo", "Indian/Mauritius", "Indian/Reunion", "Indian/Comoro",
+    "Indian/Mayotte", "Indian/Chagos", "Indian/Kerguelen", "Indian/Christmas",
+    "Indian/Cocos",
+    "Africa/Johannesburg", "Africa/Maputo", "Africa/Windhoek", "Africa/Gaborone",
+    "Africa/Harare", "Africa/Lusaka", "Africa/Maseru", "Africa/Mbabane",
+    "Africa/Blantyre", "Africa/Lubumbashi", "Africa/Luanda", "Africa/Kinshasa",
+    "America/Sao_Paulo", "America/Argentina/Buenos_Aires", "America/Argentina/Cordoba",
+    "America/Argentina/Salta", "America/Argentina/Jujuy", "America/Argentina/Tucuman",
+    "America/Argentina/Catamarca", "America/Argentina/La_Rioja",
+    "America/Argentina/San_Juan", "America/Argentina/Mendoza",
+    "America/Argentina/San_Luis", "America/Argentina/Rio_Gallegos",
+    "America/Argentina/Ushuaia", "America/Santiago", "America/Punta_Arenas",
+    "America/Asuncion", "America/Montevideo", "America/La_Paz", "America/Lima",
+    "America/Bahia", "America/Recife", "America/Fortaleza", "America/Cuiaba",
+    "America/Campo_Grande", "America/Porto_Velho", "America/Rio_Branco",
+    "America/Noronha", "America/Belem", "America/Araguaina", "America/Maceio",
+    "America/Santarem",
+    "Atlantic/South_Georgia", "Atlantic/Stanley",
+})
+
+
+def _is_southern_hemisphere(tz_name):
+    return tz_name.startswith("Australia/") or tz_name.startswith("Antarctica/") \
+        or tz_name in _SOUTHERN_HEMISPHERE_ZONES
+
+
 def _current_season_and_daynight():
-    """Meteorological season by month, Northern-hemisphere assumption (no
-    location is tracked anywhere in this app to do better) — documented in
-    the README as a known limitation for Southern-hemisphere users."""
-    now = datetime.now()
+    """Meteorological season and day/night, using the configured TZ (see
+    the TZ environment variable / app_settings 'timezone') for the actual
+    current local time rather than the server's own clock — and a
+    best-effort hemisphere guess from that same zone name, rather than
+    always assuming Northern. Falls back to UTC if the configured value
+    isn't a valid zone name."""
+    tz_name = _get_setting("timezone", "Etc/UTC") or "Etc/UTC"
+    try:
+        tz = ZoneInfo(tz_name)
+    except (ZoneInfoNotFoundError, ValueError):
+        tz_name, tz = "Etc/UTC", ZoneInfo("UTC")
+
+    now = datetime.now(tz)
     month, hour = now.month, now.hour
+
     if month in (3, 4, 5):
-        season = "Spring"
+        season = "Fall" if _is_southern_hemisphere(tz_name) else "Spring"
     elif month in (6, 7, 8):
-        season = "Summer"
+        season = "Winter" if _is_southern_hemisphere(tz_name) else "Summer"
     elif month in (9, 10, 11):
-        season = "Fall"
+        season = "Spring" if _is_southern_hemisphere(tz_name) else "Fall"
     else:
-        season = "Winter"
+        season = "Summer" if _is_southern_hemisphere(tz_name) else "Winter"
+
     daynight = "Day" if 6 <= hour < 18 else "Night"
     return season, daynight
 
