@@ -123,10 +123,28 @@
     {% if is_admin %}
       <div class="detail-actions">
         <a class="btn-ghost" href="{{ url_for('edit', fragrance_id=f['id']) }}" style="display:inline-block;">Edit</a>
+        <button type="button" class="btn-ghost" onclick="toggleAddToShelf()">+ Add to Shelf</button>
         <form action="{{ url_for('delete', fragrance_id=f['id']) }}" method="post"
               onsubmit="return confirm('Remove &quot;{{ f['name'] }}&quot; by {{ f['brand'] }} from your collection? This can\'t be undone.');">
           <button type="submit" class="btn-ghost danger">Delete</button>
         </form>
+      </div>
+      <div class="add-to-shelf-panel" id="addToShelfPanel">
+        {% if addable_shelves %}
+          {% for s in addable_shelves %}
+            <form method="post" action="{{ url_for('toggle_shelf_fragrance', shelf_id=s['id'], fragrance_id=f['id']) }}">
+              <input type="hidden" name="next" value="{{ url_for('detail', fragrance_id=f['id']) }}">
+              <button type="submit" class="add-to-shelf-btn">
+                {% if s['icon'] %}<i class="{{ s['icon'] }}"></i>{% endif %}
+                {{ s['name'] }}{% if s['is_private'] %} 🔒{% endif %}
+              </button>
+            </form>
+          {% endfor %}
+        {% elif all_shelves_count == 0 %}
+          <p class="add-to-shelf-empty">No shelves yet — <a href="{{ url_for('add_shelf') }}">create one</a>.</p>
+        {% else %}
+          <p class="add-to-shelf-empty">Already on every shelf.</p>
+        {% endif %}
       </div>
     {% endif %}
 

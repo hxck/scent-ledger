@@ -388,3 +388,10 @@ function pickShelfIcon(cls) {
   input.value = cls;
   updateShelfIconPreview(cls);
 }
+
+// Fragrance detail page: "+ Add to Shelf" reveals a panel listing shelves
+// this fragrance isn't already on.
+function toggleAddToShelf() {
+  const panel = document.getElementById('addToShelfPanel');
+  if (panel) panel.classList.toggle('open');
+}

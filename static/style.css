@@ -366,6 +366,21 @@ main.content{flex:1;min-width:0;padding:40px 44px 90px;}
 }
 .fragrantica-link:hover{color:var(--sapphire-bright);border-color:var(--sapphire-bright);}
 .detail-actions{display:flex;gap:10px;margin-bottom:26px;}
+.add-to-shelf-panel{
+  display:none;flex-wrap:wrap;gap:8px;margin:-14px 0 26px;
+  padding:14px;border:1px solid var(--line);border-radius:var(--radius);
+  background:var(--bg-glass);backdrop-filter:blur(10px);
+}
+.add-to-shelf-panel.open{display:flex;}
+.add-to-shelf-btn{
+  display:flex;align-items:center;gap:7px;
+  background:var(--bg-card);border:1px solid var(--line-strong);color:var(--ink-dim);
+  padding:8px 14px;border-radius:20px;font-size:12.5px;cursor:pointer;
+  transition:border-color .15s, color .15s, background .15s;
+}
+.add-to-shelf-btn:hover{border-color:var(--gold);color:var(--gold-bright);background:var(--gold-glow);}
+.add-to-shelf-empty{color:var(--ink-faint);font-size:12.5px;margin:0;}
+.add-to-shelf-empty a{color:var(--sapphire-bright);}
 .btn-ghost{
   font-family:'Inter',sans-serif;font-size:12.5px;font-weight:500;background:var(--bg-glass);
   border:1px solid var(--line-strong);color:var(--ink-dim);padding:7px 13px;

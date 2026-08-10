@@ -1009,7 +1009,18 @@ def detail(fragrance_id):
     frag = get_fragrance_full(fragrance_id)
     if frag is None:
         abort(404)
-    return render_template("detail.html", f=frag, current_id=fragrance_id)
+    addable_shelves = []
+    all_shelves_count = 0
+    if session.get("logged_in"):
+        db = get_db()
+        on_shelf_ids = {s["id"] for s in frag["shelves"]}
+        rows = db.execute("SELECT id, name, icon, is_private FROM shelves ORDER BY name COLLATE NOCASE").fetchall()
+        all_shelves_count = len(rows)
+        addable_shelves = [dict(r) for r in rows if r["id"] not in on_shelf_ids]
+    return render_template(
+        "detail.html", f=frag, current_id=fragrance_id,
+        addable_shelves=addable_shelves, all_shelves_count=all_shelves_count,
+    )
 
 
 @app.route("/add", methods=["GET", "POST"])
@@ -1510,6 +1521,13 @@ def toggle_shelf_fragrance(shelf_id, fragrance_id):
             (shelf_id, fragrance_id),
         )
     db.commit()
+    # Defaults to the shelf's own page (the original behavior, from the
+    # shelf's add/remove list) — but honors an explicit same-site "next"
+    # so this can also be triggered from a fragrance's own page and land
+    # back there instead.
+    next_param = request.form.get("next", "").strip()
+    if next_param and next_param.startswith("/") and not next_param.startswith("//"):
+        return redirect(next_param)
     return redirect(url_for("shelf_detail", shelf_id=shelf_id))
 
 
