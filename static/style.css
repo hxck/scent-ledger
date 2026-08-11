@@ -269,7 +269,7 @@ main.content{flex:1;min-width:0;padding:40px 44px 90px;}
 }
 .footer-link:hover{color:var(--sapphire-bright);}
 .footer-sep{color:var(--ink-faint);opacity:0.5;}
-.content-narrow{max-width:900px;}
+.content-narrow{max-width:960px;margin:0 auto;}
 
 /* ---------- FLASH ---------- */
 .breadcrumbs{
@@ -335,6 +335,11 @@ main.content{flex:1;min-width:0;padding:40px 44px 90px;}
 
 /* ---------- DETAIL ---------- */
 .detail-grid{display:grid;grid-template-columns:320px 1fr;gap:48px;align-items:start;max-width:960px;margin:0 auto;}
+/* Same column as .detail-grid, for pages that aren't a fragrance detail
+   page but should still line up with it — Wishlist, Shelves, and an
+   individual shelf's page. Deliberately NOT applied to Home or Search,
+   which use the full content width for their grids. */
+.content-centered{max-width:960px;margin:0 auto;}
 .detail-image-col{position:sticky;top:96px;display:flex;flex-direction:column;gap:16px;}
 .detail-image{
   width:100%;background:var(--sapphire-deep);border:1px solid var(--line-strong);

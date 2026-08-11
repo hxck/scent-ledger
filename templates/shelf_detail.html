@@ -6,6 +6,7 @@
 {% endblock %}
 {% block content %}
 
+<div class="content-centered">
 <div class="hero" style="padding-bottom:24px;margin-bottom:24px;">
   <h1 style="font-size:clamp(26px,3vw,36px);">
     {% if shelf['icon'] %}<i class="{{ shelf['icon'] }} shelf-icon"></i>{% endif %}{{ shelf['name'] }}
@@ -63,5 +64,6 @@
     {% endif %}
   </details>
 {% endif %}
+</div>
 
 {% endblock %}

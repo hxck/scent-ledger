@@ -3,6 +3,7 @@
 {% block breadcrumbs %}<span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Wishlist</span>{% endblock %}
 {% block content %}
 
+<div class="content-centered">
 {% if fragrances|length == 0 %}
   <div class="hero">
     <h1>Wishlist</h1>
@@ -29,5 +30,6 @@
     {% endfor %}
   </div>
 {% endif %}
+</div>
 
 {% endblock %}
