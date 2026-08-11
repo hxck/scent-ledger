@@ -46,6 +46,9 @@
           Never logged as worn
         {% endif %}
       </div>
+      {% if f['cost_per_wear'] is not none %}
+        <div class="cost-per-wear">${{ '%.2f'|format(f['cost_per_wear']) }} per wear</div>
+      {% endif %}
       {% if is_admin %}
         <form method="post" action="{{ url_for('log_wear', fragrance_id=f['id']) }}" style="margin-top:10px;">
           <button type="submit" class="btn-ghost wear-log-btn">I Wore This Today</button>
@@ -159,6 +162,11 @@
       <p class="description">{{ f['description'] }}</p>
     {% endif %}
 
+    {% if is_admin and f['private_notes'] %}
+      <div class="section-label private-notes-label">🔒 Private Notes <span class="private-notes-hint">(only you can see this)</span></div>
+      <p class="description private-notes">{{ f['private_notes'] }}</p>
+    {% endif %}
+
     <div class="section-label">Note Breakdown</div>
     <div class="pyramid">
       <div class="pyr-tier pyr-top">
@@ -228,5 +236,29 @@
     {% endif %}
   </div>
 </div>
+
+{% if similar_fragrances %}
+  <div class="content-centered">
+    <div class="section-label" style="margin-top:8px;">Similar in Your Collection</div>
+    <div class="similar-list">
+      {% for s in similar_fragrances %}
+        <a class="similar-card" href="{{ url_for('detail', fragrance_id=s['id']) }}">
+          <div class="similar-card-thumb">
+            {% if s['image_filename'] %}
+              <img src="{{ url_for('static', filename='uploads/' + s['image_filename']) }}" alt="">
+            {% else %}
+              <div class="ph">NO IMAGE</div>
+            {% endif %}
+          </div>
+          <div class="similar-card-info">
+            <div class="similar-card-brand">{{ s['brand'] }}</div>
+            <div class="similar-card-name">{{ s['name'] }}</div>
+            <div class="similar-card-shared">{{ s['shared'] }} shared note{{ 's' if s['shared'] != 1 else '' }}</div>
+          </div>
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
 
 {% endblock %}

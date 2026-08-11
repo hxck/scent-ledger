@@ -395,3 +395,74 @@ function toggleAddToShelf() {
   const panel = document.getElementById('addToShelfPanel');
   if (panel) panel.classList.toggle('open');
 }
+
+// Bulk select: available to everyone (Compare is a public, non-mutating
+// action), but the mutating toolbar actions (Add to Shelf / Add Tag) only
+// render at all when logged in — see base.html.
+const bulkSelectedIds = new Set();
+
+function toggleBulkSelectMode() {
+  const active = document.body.classList.toggle('bulk-select-mode');
+  document.querySelectorAll('.bulk-select-toggle-btn').forEach((btn) => {
+    btn.textContent = active ? 'Cancel' : 'Select';
+  });
+  if (!active) {
+    bulkSelectedIds.clear();
+    document.querySelectorAll('.card-select-checkbox').forEach((cb) => { cb.checked = false; });
+    updateBulkToolbar();
+  }
+}
+
+function toggleBulkCard(checkbox) {
+  const id = checkbox.dataset.fragranceId;
+  if (checkbox.checked) bulkSelectedIds.add(id);
+  else bulkSelectedIds.delete(id);
+  updateBulkToolbar();
+}
+
+function updateBulkToolbar() {
+  const toolbar = document.getElementById('bulkToolbar');
+  if (!toolbar) return;
+  const n = bulkSelectedIds.size;
+  document.getElementById('bulkCount').textContent = n + (n === 1 ? ' selected' : ' selected');
+  toolbar.classList.toggle('visible', n > 0);
+  const compareBtn = document.getElementById('bulkCompareBtn');
+  if (compareBtn) compareBtn.disabled = !(n >= 2 && n <= 3);
+}
+
+function cancelBulkSelect() {
+  document.body.classList.remove('bulk-select-mode');
+  document.querySelectorAll('.bulk-select-toggle-btn').forEach((btn) => { btn.textContent = 'Select'; });
+  bulkSelectedIds.clear();
+  document.querySelectorAll('.card-select-checkbox').forEach((cb) => { cb.checked = false; });
+  updateBulkToolbar();
+}
+
+function goToCompare() {
+  if (bulkSelectedIds.size < 2 || bulkSelectedIds.size > 3) return;
+  window.location.href = '/compare?ids=' + Array.from(bulkSelectedIds).join(',');
+}
+
+// Before either bulk-action form submits, inject the currently-selected
+// fragrance ids as hidden inputs — the selection only lives in JS state
+// until the moment of submit.
+document.addEventListener('DOMContentLoaded', () => {
+  ['bulkShelfForm', 'bulkTagForm'].forEach((formId) => {
+    const form = document.getElementById(formId);
+    if (!form) return;
+    form.addEventListener('submit', (e) => {
+      if (bulkSelectedIds.size === 0) {
+        e.preventDefault();
+        return;
+      }
+      form.querySelectorAll('input[name="fragrance_ids"]').forEach((el) => el.remove());
+      bulkSelectedIds.forEach((id) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'fragrance_ids';
+        input.value = id;
+        form.appendChild(input);
+      });
+    });
+  });
+});

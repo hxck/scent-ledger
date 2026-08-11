@@ -11,3 +11,4 @@ static/uploads/*
 venv/
 .venv/
 README.md
+scent.sh

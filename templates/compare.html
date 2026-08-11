@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Compare — The Scent Ledger{% endblock %}
+{% block breadcrumbs %}<span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Compare</span>{% endblock %}
+{% block content %}
+
+<div class="content-centered">
+  <div class="hero" style="padding-bottom:24px;margin-bottom:24px;">
+    <h1 style="font-size:clamp(26px,3vw,36px);">Compare</h1>
+    <p>Side-by-side look at {{ fragrances|length }} fragrances from your collection.</p>
+  </div>
+
+  <div class="compare-table-wrap">
+    <table class="compare-table">
+      <thead>
+        <tr>
+          <th class="compare-row-label"></th>
+          {% for f in fragrances %}
+            <th>
+              <a href="{{ url_for('detail', fragrance_id=f['id']) }}" class="compare-col-header">
+                <div class="compare-thumb {{ 'no-bg' if f['image_filename'] and f['image_filename'].endswith('.png') else '' }}">
+                  {% if f['image_filename'] %}
+                    <img src="{{ url_for('static', filename='uploads/' + f['image_filename']) }}" alt="">
+                  {% else %}
+                    <div class="ph">NO IMAGE</div>
+                  {% endif %}
+                </div>
+                <div class="compare-col-brand">{{ f['brand'] }}</div>
+                <div class="compare-col-name">{{ f['name'] }}</div>
+              </a>
+            </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="compare-row-label">Rating</td>
+          {% for f in fragrances %}
+            <td>
+              {% if f['rating'] %}
+                {% for i in range(1, 6) %}<span class="star {{ 'filled' if i <= f['rating'] else '' }}">★</span>{% endfor %}
+              {% else %}<span class="compare-none">—</span>{% endif %}
+            </td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <td class="compare-row-label">Price</td>
+          {% for f in fragrances %}
+            <td>{% if f['price'] is not none %}${{ '%.2f'|format(f['price']) }}{% else %}<span class="compare-none">—</span>{% endif %}</td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <td class="compare-row-label">Cost / Wear</td>
+          {% for f in fragrances %}
+            <td>{% if f['cost_per_wear'] is not none %}${{ '%.2f'|format(f['cost_per_wear']) }}{% else %}<span class="compare-none">—</span>{% endif %}</td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <td class="compare-row-label">Seasons</td>
+          {% for f in fragrances %}
+            <td>{% if f['seasons'] %}{{ f['seasons'] | join(', ') }}{% else %}<span class="compare-none">—</span>{% endif %}</td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <td class="compare-row-label">Day / Night</td>
+          {% for f in fragrances %}
+            <td>{{ f['daynight'] or '—' }}</td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <td class="compare-row-label">Top Notes</td>
+          {% for f in fragrances %}
+            <td>{% if f['notes']['top'] %}{{ f['notes']['top'] | map(attribute='text') | join(', ') }}{% else %}<span class="compare-none">—</span>{% endif %}</td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <td class="compare-row-label">Middle Notes</td>
+          {% for f in fragrances %}
+            <td>{% if f['notes']['middle'] %}{{ f['notes']['middle'] | map(attribute='text') | join(', ') }}{% else %}<span class="compare-none">—</span>{% endif %}</td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <td class="compare-row-label">Base Notes</td>
+          {% for f in fragrances %}
+            <td>{% if f['notes']['base'] %}{{ f['notes']['base'] | map(attribute='text') | join(', ') }}{% else %}<span class="compare-none">—</span>{% endif %}</td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <td class="compare-row-label">Tags</td>
+          {% for f in fragrances %}
+            <td>{% if f['tags'] %}{{ f['tags'] | join(', ') }}{% else %}<span class="compare-none">—</span>{% endif %}</td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <td class="compare-row-label">Fill Level</td>
+          {% for f in fragrances %}
+            <td>{{ f['fill_level'] }}%</td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <td class="compare-row-label">Wear Count</td>
+          {% for f in fragrances %}
+            <td>{{ f['wear_count'] }}</td>
+          {% endfor %}
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

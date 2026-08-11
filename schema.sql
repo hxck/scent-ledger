@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS fragrances (
     fragrantica_url TEXT,
     rating          INTEGER,
     fill_level      INTEGER NOT NULL DEFAULT 100,
+    private_notes   TEXT,
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

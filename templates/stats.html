@@ -224,6 +224,43 @@
     </div>
   {% endif %}
 
+  {% if best_value or timeline %}
+    <div class="stats-grid">
+      <div class="stats-panel">
+        <div class="section-label">Best Value <span class="section-label-note">(lowest cost per wear)</span></div>
+        {% if best_value %}
+          <ul class="needs-love-list">
+            {% for row in best_value %}
+              <li>
+                <a href="{{ url_for('detail', fragrance_id=row.id) }}">{{ row.brand }} {{ row.name }}</a>
+                <span class="needs-love-when">${{ '%.2f'|format(row.cost_per_wear) }}/wear</span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="stats-empty-note">Needs a purchase price and at least one logged wear to work this out.</p>
+        {% endif %}
+      </div>
+
+      <div class="stats-panel">
+        <div class="section-label">Collection Timeline <span class="section-label-note">(last 12 months)</span></div>
+        {% if timeline %}
+          <div class="bar-chart">
+            {% for row in timeline %}
+              <div class="bar-row">
+                <div class="bar-label">{{ row.label }}</div>
+                <div class="bar-track"><div class="bar-fill bar-fill-gold" data-target="{{ row.pct }}" style="width:0%;"></div></div>
+                <div class="bar-count">{{ row.cnt }}</div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="stats-empty-note">Nothing added yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+
 {% endif %}
 {% endblock %}
 

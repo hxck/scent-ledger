@@ -143,6 +143,7 @@
     <p>Try a different search term or fewer tags.</p>
   </div>
 {% else %}
+  {% include "_bulk_select_toggle.html" %}
   <div class="grid">
     {% for f in fragrances %}
       {% include "_card.html" %}

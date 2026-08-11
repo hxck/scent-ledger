@@ -32,6 +32,7 @@
     <p>{{ 'Add some from the list below.' if is_admin else 'Check back later.' }}</p>
   </div>
 {% else %}
+  {% include "_bulk_select_toggle.html" %}
   <div class="grid">
     {% for f in fragrances %}
       {% include "_card.html" %}

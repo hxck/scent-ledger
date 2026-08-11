@@ -144,6 +144,8 @@ def _run_migrations(conn):
         conn.execute("ALTER TABLE fragrances ADD COLUMN rating INTEGER")
     if "fill_level" not in existing_cols:
         conn.execute("ALTER TABLE fragrances ADD COLUMN fill_level INTEGER NOT NULL DEFAULT 100")
+    if "private_notes" not in existing_cols:
+        conn.execute("ALTER TABLE fragrances ADD COLUMN private_notes TEXT")
 
 
 def init_db():
@@ -267,6 +269,59 @@ def get_all_fragrances_grouped_by_brand():
     return sorted(groups.items(), key=lambda kv: kv[0].lower())
 
 
+def _find_possible_duplicate(db, brand, name, exclude_id=None):
+    """Soft duplicate check for the Add/Edit form: same brand (case/space
+    insensitive), and a name that's an exact match or a substring either way
+    — catches things like "Baccarat Rouge 540" vs "Baccarat Rouge 540
+    Extrait" as well as exact re-entries. Never blocks a save, just flags it
+    — plenty of collections have genuinely distinct bottles with very
+    similar names (different concentrations, flankers, etc.)."""
+    norm_name = name.strip().lower()
+    if not norm_name:
+        return None
+    query = "SELECT id, brand, name FROM fragrances WHERE LOWER(TRIM(brand)) = LOWER(TRIM(?))"
+    params = [brand]
+    if exclude_id is not None:
+        query += " AND id != ?"
+        params.append(exclude_id)
+    for row in db.execute(query, params).fetchall():
+        candidate_name = (row["name"] or "").strip().lower()
+        if not candidate_name:
+            continue
+        if candidate_name == norm_name or candidate_name in norm_name or norm_name in candidate_name:
+            return dict(row)
+    return None
+
+
+def _find_similar_fragrances(fragrance_id, limit=4):
+    """Other owned (non-wishlist) fragrances that share the most notes with
+    this one, case/whitespace-normalized. Returns nothing if this fragrance
+    has no notes of its own — there'd be nothing meaningful to compare."""
+    db = get_db()
+    my_notes = db.execute(
+        "SELECT DISTINCT LOWER(TRIM(note_text)) AS n FROM notes WHERE fragrance_id = ?",
+        (fragrance_id,),
+    ).fetchall()
+    note_set = {r["n"] for r in my_notes if r["n"]}
+    if not note_set:
+        return []
+    placeholders = ",".join("?" * len(note_set))
+    rows = db.execute(
+        f"""
+        SELECT f.id, f.brand, f.name, f.image_filename,
+               COUNT(DISTINCT LOWER(TRIM(n.note_text))) AS shared
+        FROM fragrances f
+        JOIN notes n ON n.fragrance_id = f.id
+        WHERE f.id != ? AND f.is_wishlist = 0
+          AND LOWER(TRIM(n.note_text)) IN ({placeholders})
+        GROUP BY f.id
+        ORDER BY shared DESC, f.brand COLLATE NOCASE, f.name COLLATE NOCASE
+        LIMIT ?
+        """,
+        (fragrance_id, *note_set, limit),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
 
 @app.context_processor
 def inject_sidebar():
@@ -289,11 +344,18 @@ def inject_sidebar():
     if not session.get("logged_in"):
         shelves_count_query += " WHERE is_private = 0"
     shelves_count = get_db().execute(shelves_count_query).fetchone()["c"]
+    all_shelves_for_bulk = []
+    if session.get("logged_in"):
+        all_shelves_for_bulk = [
+            dict(r) for r in get_db().execute(
+                "SELECT id, name, is_private FROM shelves ORDER BY name COLLATE NOCASE"
+            ).fetchall()
+        ]
     return {
         "sidebar_groups": groups, "sidebar_total": total, "sidebar_brand_count": len(groups),
         "wishlist_count": wishlist_count, "sidebar_owned_only": bool(session.get("sidebar_owned_only")),
         "sidebar_total_unfiltered": total_unfiltered, "missing_notes_count": missing_notes_count,
-        "shelves_count": shelves_count,
+        "shelves_count": shelves_count, "all_shelves_for_bulk": all_shelves_for_bulk,
     }
 
 
@@ -401,6 +463,10 @@ def get_fragrance_full(fragrance_id):
     frag["wear_count"] = len(frag["wear_log"])
     frag["last_worn"] = frag["wear_log"][0]["worn_at"] if frag["wear_log"] else None
     frag["last_worn_display"] = _humanize_days_ago(frag["last_worn"])
+    frag["cost_per_wear"] = (
+        frag["purchase_price"] / frag["wear_count"]
+        if frag.get("purchase_price") and frag["wear_count"] else None
+    )
 
     return frag
 
@@ -592,6 +658,39 @@ def stats_top_houses(limit=5):
     return _with_bar_pct([dict(r) for r in rows])
 
 
+_MONTH_NAMES = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def stats_timeline(months=12):
+    """How the collection grew, by month, oldest to newest — the one thing
+    created_at was tracked for but never actually shown anywhere until now.
+    Always returns exactly `months` calendar-month buckets ending this month,
+    zero-filled where nothing was added — a real gap should show as an empty
+    bar, not be silently skipped and make the timeline look compressed."""
+    db = get_db()
+    now = datetime.now()
+    buckets = []
+    y, m = now.year, now.month
+    for _ in range(months):
+        buckets.append(f"{y:04d}-{m:02d}")
+        m -= 1
+        if m == 0:
+            m, y = 12, y - 1
+    buckets.reverse()
+
+    rows = db.execute(
+        "SELECT strftime('%Y-%m', created_at) AS ym, COUNT(*) AS cnt "
+        "FROM fragrances WHERE is_wishlist = 0 GROUP BY ym"
+    ).fetchall()
+    counts_by_ym = {r["ym"]: r["cnt"] for r in rows}
+
+    result = []
+    for ym in buckets:
+        year, month = ym.split("-")
+        result.append({"label": f"{_MONTH_NAMES[int(month)]} '{year[2:]}", "cnt": counts_by_ym.get(ym, 0)})
+    return _with_bar_pct(result)
+
+
 def stats_most_worn(limit=5):
     db = get_db()
     rows = db.execute(
@@ -633,6 +732,29 @@ def stats_needs_love(limit=8, stale_days=90):
         d["last_worn_display"] = _humanize_days_ago(d["last_worn"]) if d["last_worn"] else "never"
         result.append(d)
     return result
+
+
+def stats_best_value(limit=5):
+    """Lowest cost-per-wear — needs both a purchase price and at least one
+    logged wear, otherwise there's nothing meaningful to divide. A simple
+    list rather than a bar chart, since cost-per-wear values can vary by
+    orders of magnitude and a bar relative to the largest wouldn't read
+    intuitively the way a count-based bar does."""
+    db = get_db()
+    rows = db.execute(
+        """
+        SELECT f.id, f.brand, f.name,
+               f.purchase_price / COUNT(w.id) AS cost_per_wear, COUNT(w.id) AS wear_count
+        FROM fragrances f
+        JOIN wear_log w ON w.fragrance_id = f.id
+        WHERE f.is_wishlist = 0 AND f.purchase_price IS NOT NULL
+        GROUP BY f.id
+        ORDER BY cost_per_wear ASC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def stats_price_extremes():
@@ -1039,6 +1161,7 @@ def detail(fragrance_id):
     return render_template(
         "detail.html", f=frag, current_id=fragrance_id,
         addable_shelves=addable_shelves, all_shelves_count=all_shelves_count,
+        similar_fragrances=_find_similar_fragrances(fragrance_id),
     )
 
 
@@ -1153,6 +1276,7 @@ def _handle_form_submit(mode, fragrance_id, existing=None):
         bottles_owned = 1
 
     fragrantica_url = request.form.get("fragrantica_url", "").strip() or None
+    private_notes = request.form.get("private_notes", "").strip() or None
 
     rating_raw = request.form.get("rating", "").strip()
     try:
@@ -1180,6 +1304,7 @@ def _handle_form_submit(mode, fragrance_id, existing=None):
             is_gift=is_gift, is_discontinued=is_discontinued, is_wishlist=is_wishlist,
             currently_owned=currently_owned, gave_away=gave_away, bottles_owned=bottles_owned,
             fragrantica_url=fragrantica_url, rating=rating, fill_level=fill_level,
+            private_notes=private_notes,
         )
         return render_template("form.html", mode=mode, f=stub), 400
 
@@ -1204,6 +1329,17 @@ def _handle_form_submit(mode, fragrance_id, existing=None):
         else:
             flash("Couldn't auto-import the photo — feel free to upload it manually.", "error")
 
+    possible_dup = _find_possible_duplicate(
+        db, brand, name, exclude_id=(fragrance_id if mode == "edit" else None)
+    )
+    if possible_dup:
+        flash(
+            f'You already have "{possible_dup["brand"]} {possible_dup["name"]}" in your '
+            f'collection — this might be a duplicate. Saved anyway; edit or delete '
+            f'whichever one was the mistake, if any.',
+            "warning",
+        )
+
     if mode == "add":
         cur = db.execute(
             """
@@ -1211,13 +1347,13 @@ def _handle_form_submit(mode, fragrance_id, existing=None):
                 (brand, name, subname, image_filename, description, daynight,
                  price, purchase_price, is_gift, is_discontinued, is_wishlist,
                  currently_owned, gave_away, bottles_owned, fragrantica_url,
-                 rating, fill_level)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 rating, fill_level, private_notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (brand, name, subname, image_filename, description, daynight,
              price, purchase_price, is_gift, is_discontinued, is_wishlist,
              currently_owned, gave_away, bottles_owned, fragrantica_url,
-             rating, fill_level),
+             rating, fill_level, private_notes),
         )
         fragrance_id = cur.lastrowid
     else:
@@ -1227,13 +1363,13 @@ def _handle_form_submit(mode, fragrance_id, existing=None):
             SET brand = ?, name = ?, subname = ?, image_filename = ?, description = ?, daynight = ?,
                 price = ?, purchase_price = ?, is_gift = ?, is_discontinued = ?, is_wishlist = ?,
                 currently_owned = ?, gave_away = ?, bottles_owned = ?, fragrantica_url = ?,
-                rating = ?, fill_level = ?
+                rating = ?, fill_level = ?, private_notes = ?
             WHERE id = ?
             """,
             (brand, name, subname, image_filename, description, daynight,
              price, purchase_price, is_gift, is_discontinued, is_wishlist,
              currently_owned, gave_away, bottles_owned, fragrantica_url,
-             rating, fill_level, fragrance_id),
+             rating, fill_level, private_notes, fragrance_id),
         )
 
     replace_seasons(db, fragrance_id, seasons)
@@ -1515,6 +1651,68 @@ def toggle_shelf_private(shelf_id):
     )
     db.commit()
     return redirect(url_for("shelf_detail", shelf_id=shelf_id))
+
+
+@app.route("/bulk/add-to-shelf", methods=["POST"])
+@login_required
+def bulk_add_to_shelf():
+    shelf_id = request.form.get("shelf_id", type=int)
+    fragrance_ids = request.form.getlist("fragrance_ids", type=int)
+    next_url = _safe_next_url(request.form.get("next", ""))
+    if not shelf_id or not fragrance_ids:
+        flash("Pick a shelf and select at least one fragrance first.", "error")
+        return redirect(next_url)
+    db = get_db()
+    shelf = db.execute("SELECT name FROM shelves WHERE id = ?", (shelf_id,)).fetchone()
+    if shelf is None:
+        abort(404)
+    for fid in fragrance_ids:
+        db.execute(
+            "INSERT OR IGNORE INTO shelf_fragrances (shelf_id, fragrance_id) VALUES (?, ?)",
+            (shelf_id, fid),
+        )
+    db.commit()
+    flash(f'Added {len(fragrance_ids)} fragrance(s) to "{shelf["name"]}".', "success")
+    return redirect(next_url)
+
+
+@app.route("/bulk/add-tag", methods=["POST"])
+@login_required
+def bulk_add_tag():
+    tag_name = request.form.get("tag_name", "").strip()
+    fragrance_ids = request.form.getlist("fragrance_ids", type=int)
+    next_url = _safe_next_url(request.form.get("next", ""))
+    if not tag_name or not fragrance_ids:
+        flash("Enter a tag and select at least one fragrance first.", "error")
+        return redirect(next_url)
+    db = get_db()
+    db.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (tag_name,))
+    tag_row = db.execute("SELECT id FROM tags WHERE name = ?", (tag_name,)).fetchone()
+    for fid in fragrance_ids:
+        db.execute(
+            "INSERT OR IGNORE INTO fragrance_tags (fragrance_id, tag_id) VALUES (?, ?)",
+            (fid, tag_row["id"]),
+        )
+    db.commit()
+    flash(f'Tagged {len(fragrance_ids)} fragrance(s) with "{tag_name}".', "success")
+    return redirect(next_url)
+
+
+@app.route("/compare")
+def compare():
+    ids_param = request.args.get("ids", "")
+    try:
+        ids = [int(x) for x in ids_param.split(",") if x.strip()][:3]
+    except ValueError:
+        ids = []
+    if len(ids) < 2:
+        flash("Select 2-3 fragrances to compare.", "error")
+        return redirect(url_for("home"))
+    fragrances = [f for f in (get_fragrance_full(fid) for fid in ids) if f is not None]
+    if len(fragrances) < 2:
+        flash("Couldn't find enough of those fragrances to compare.", "error")
+        return redirect(url_for("home"))
+    return render_template("compare.html", fragrances=fragrances)
 
 
 @app.route("/shelves/<int:shelf_id>/toggle/<int:fragrance_id>", methods=["POST"])
@@ -1867,6 +2065,8 @@ def stats():
         cheapest=cheapest,
         most_worn=stats_most_worn(5),
         needs_love=stats_needs_love(8),
+        best_value=stats_best_value(5),
+        timeline=stats_timeline(12),
     )
 
 

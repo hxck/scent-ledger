@@ -21,6 +21,7 @@
     <h1>The Scent Ledger</h1>
     <p>{{ fragrances|length }} fragrance{{ 's' if fragrances|length != 1 else '' }} on the shelf. Browse below, or search the header for a specific note or mood.</p>
   </div>
+  {% include "_bulk_select_toggle.html" %}
   <div class="grid">
     {% for f in fragrances %}
       {% include "_card.html" %}

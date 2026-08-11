@@ -24,6 +24,7 @@
     <p>{{ fragrances|length }} fragrance{{ 's' if fragrances|length != 1 else '' }} on the wishlist.
       {% if is_admin %}Edit one and uncheck "On Wishlist" to move it into your collection.{% endif %}</p>
   </div>
+  {% include "_bulk_select_toggle.html" %}
   <div class="grid">
     {% for f in fragrances %}
       {% include "_card.html" %}

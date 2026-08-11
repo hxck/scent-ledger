@@ -163,6 +163,31 @@
   </main>
 </div>
 
+<div class="bulk-toolbar" id="bulkToolbar">
+  <span class="bulk-toolbar-count" id="bulkCount">0 selected</span>
+  <div class="bulk-toolbar-actions">
+    {% if is_admin %}
+      <form method="post" action="{{ url_for('bulk_add_to_shelf') }}" id="bulkShelfForm" class="bulk-toolbar-form">
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <select name="shelf_id" required>
+          <option value="" disabled selected>Add to shelf…</option>
+          {% for s in all_shelves_for_bulk %}
+            <option value="{{ s['id'] }}">{{ s['name'] }}{% if s['is_private'] %} 🔒{% endif %}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn-ghost">Add</button>
+      </form>
+      <form method="post" action="{{ url_for('bulk_add_tag') }}" id="bulkTagForm" class="bulk-toolbar-form">
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <input type="text" name="tag_name" placeholder="Add tag…" required maxlength="60">
+        <button type="submit" class="btn-ghost">Tag</button>
+      </form>
+    {% endif %}
+    <button type="button" class="btn-ghost" id="bulkCompareBtn" onclick="goToCompare()" disabled title="Select 2-3 to compare">Compare</button>
+    <button type="button" class="btn-ghost" onclick="cancelBulkSelect()">Cancel</button>
+  </div>
+</div>
+
 <footer class="site-footer">
   <a href="https://github.com/hxck/scent-ledger" target="_blank" rel="noopener noreferrer" class="footer-link" aria-label="GitHub repository">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">

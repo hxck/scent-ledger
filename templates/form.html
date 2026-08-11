@@ -171,6 +171,11 @@
       <textarea id="fDescription" name="description" placeholder="Tasting notes, occasions, how it wears...">{{ fd.get('description', '') }}</textarea>
     </div>
 
+    <div class="field">
+      <label for="fPrivateNotes">Private Notes <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(only visible to you, never shown to public visitors)</span></label>
+      <textarea id="fPrivateNotes" name="private_notes" placeholder="Batch differences, where you bought it, anything you don't want on the public description...">{{ fd.get('private_notes', '') }}</textarea>
+    </div>
+
     <div class="field-row">
       <div class="field">
         <label>Season</label>
