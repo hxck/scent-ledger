@@ -59,7 +59,7 @@
             <div class="wear-history-list">
               {% for entry in f['wear_log'] %}
                 <div class="wear-history-row">
-                  <span>{{ entry['worn_at'] }}</span>
+                  <span>{{ entry['worn_at_display'] }}</span>
                   <form method="post" action="{{ url_for('delete_wear_entry', entry_id=entry['id']) }}"
                         onsubmit="return confirm('Remove this wear log entry?');">
                     <button type="submit" class="wear-history-delete" title="Remove entry">×</button>

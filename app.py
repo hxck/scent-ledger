@@ -146,6 +146,8 @@ def _run_migrations(conn):
         conn.execute("ALTER TABLE fragrances ADD COLUMN fill_level INTEGER NOT NULL DEFAULT 100")
     if "private_notes" not in existing_cols:
         conn.execute("ALTER TABLE fragrances ADD COLUMN private_notes TEXT")
+    if "size_ml" not in existing_cols:
+        conn.execute("ALTER TABLE fragrances ADD COLUMN size_ml INTEGER")
 
 
 def init_db():
@@ -198,6 +200,28 @@ def _humanize_days_ago(iso_datetime_str):
     if days == 1:
         return "yesterday"
     return f"{days} days ago"
+
+
+def _utc_to_local_display(iso_utc_str):
+    """Converts a stored UTC timestamp (SQLite's datetime('now') always
+    stores UTC, regardless of the configured TZ — that's correct, the
+    database should hold one unambiguous timezone) into the configured
+    local timezone for display. Returns the original string unconverted if
+    it can't be parsed, rather than hiding a real timestamp behind a blank
+    field."""
+    if not iso_utc_str:
+        return iso_utc_str
+    try:
+        naive = datetime.strptime(iso_utc_str.split(".")[0], "%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return iso_utc_str
+    tz_name = _get_setting("timezone", "Etc/UTC") or "Etc/UTC"
+    try:
+        tz = ZoneInfo(tz_name)
+    except (ZoneInfoNotFoundError, ValueError):
+        tz = ZoneInfo("UTC")
+    local = naive.replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)
+    return local.strftime("%b %-d, %Y %-I:%M %p")
 
 
 def _season_color_group(season_csv):
@@ -401,6 +425,20 @@ def get_all_fragrances_light(wishlist=False, respect_owned_filter=False):
     return result
 
 
+def _cost_per_wear_from_size(price, size_ml):
+    """Cost per wear from bottle economics — 10 sprays per ml (1,000
+    sprays in a 100ml bottle), 6 sprays per wear — rather than actual
+    purchase price divided by times logged worn. This is a fixed number
+    based on price and bottle size alone; it doesn't change as you log
+    more wears, and doesn't need any wear log data to compute at all.
+    Needs both a price and a size to mean anything."""
+    if not price or not size_ml:
+        return None
+    total_sprays = size_ml * 10
+    cost_per_spray = price / total_sprays
+    return cost_per_spray * 6
+
+
 def get_fragrance_full(fragrance_id):
     db = get_db()
     f = db.execute("SELECT * FROM fragrances WHERE id = ?", (fragrance_id,)).fetchone()
@@ -460,12 +498,13 @@ def get_fragrance_full(fragrance_id):
         (fragrance_id,),
     ).fetchall()
     frag["wear_log"] = [dict(w) for w in wear_rows]
+    for entry in frag["wear_log"]:
+        entry["worn_at_display"] = _utc_to_local_display(entry["worn_at"])
     frag["wear_count"] = len(frag["wear_log"])
     frag["last_worn"] = frag["wear_log"][0]["worn_at"] if frag["wear_log"] else None
     frag["last_worn_display"] = _humanize_days_ago(frag["last_worn"])
-    frag["cost_per_wear"] = (
-        frag["purchase_price"] / frag["wear_count"]
-        if frag.get("purchase_price") and frag["wear_count"] else None
+    frag["cost_per_wear"] = _cost_per_wear_from_size(
+        frag.get("purchase_price") or frag.get("price"), frag.get("size_ml")
     )
 
     return frag
@@ -735,26 +774,40 @@ def stats_needs_love(limit=8, stale_days=90):
 
 
 def stats_best_value(limit=5):
-    """Lowest cost-per-wear — needs both a purchase price and at least one
-    logged wear, otherwise there's nothing meaningful to divide. A simple
-    list rather than a bar chart, since cost-per-wear values can vary by
-    orders of magnitude and a bar relative to the largest wouldn't read
-    intuitively the way a count-based bar does."""
+    """Top N by total value actually gotten out of wearing it — wear count
+    times the size/price-derived cost per wear (see
+    _cost_per_wear_from_size). Needs a size and a price (purchase price,
+    falling back to reference price) to compute at all; wear count alone
+    isn't enough since a fragrance with no price/size attached can't have
+    a dollar value attached to its wears. Computed in Python rather than
+    SQL since the per-row formula has an intermediate step (cost per wear)
+    that's clearer to reason about outside a single query, and this is
+    personal-collection scale, not a performance-sensitive path."""
     db = get_db()
     rows = db.execute(
         """
         SELECT f.id, f.brand, f.name,
-               f.purchase_price / COUNT(w.id) AS cost_per_wear, COUNT(w.id) AS wear_count
+               COALESCE(f.purchase_price, f.price) AS price_for_calc,
+               f.size_ml, COUNT(w.id) AS wear_count
         FROM fragrances f
         JOIN wear_log w ON w.fragrance_id = f.id
-        WHERE f.is_wishlist = 0 AND f.purchase_price IS NOT NULL
+        WHERE f.is_wishlist = 0 AND f.size_ml IS NOT NULL
+          AND COALESCE(f.purchase_price, f.price) IS NOT NULL
         GROUP BY f.id
-        ORDER BY cost_per_wear ASC
-        LIMIT ?
-        """,
-        (limit,),
+        """
     ).fetchall()
-    return [dict(r) for r in rows]
+    result = []
+    for r in rows:
+        cost_per_wear = _cost_per_wear_from_size(r["price_for_calc"], r["size_ml"])
+        if cost_per_wear is None:
+            continue
+        result.append({
+            "id": r["id"], "brand": r["brand"], "name": r["name"],
+            "wear_count": r["wear_count"], "cost_per_wear": cost_per_wear,
+            "amount_worn": cost_per_wear * r["wear_count"],
+        })
+    result.sort(key=lambda x: x["amount_worn"], reverse=True)
+    return result[:limit]
 
 
 def stats_price_extremes():
@@ -1294,6 +1347,14 @@ def _handle_form_submit(mode, fragrance_id, existing=None):
     except ValueError:
         fill_level = 100
 
+    size_ml_raw = request.form.get("size_ml", "").strip()
+    try:
+        size_ml = int(size_ml_raw) if size_ml_raw else None
+        if size_ml is not None and size_ml <= 0:
+            size_ml = None
+    except ValueError:
+        size_ml = None
+
     if not brand or not name:
         flash("Brand and Name are required.", "error")
         stub = existing or {}
@@ -1304,7 +1365,7 @@ def _handle_form_submit(mode, fragrance_id, existing=None):
             is_gift=is_gift, is_discontinued=is_discontinued, is_wishlist=is_wishlist,
             currently_owned=currently_owned, gave_away=gave_away, bottles_owned=bottles_owned,
             fragrantica_url=fragrantica_url, rating=rating, fill_level=fill_level,
-            private_notes=private_notes,
+            private_notes=private_notes, size_ml=size_ml,
         )
         return render_template("form.html", mode=mode, f=stub), 400
 
@@ -1347,13 +1408,13 @@ def _handle_form_submit(mode, fragrance_id, existing=None):
                 (brand, name, subname, image_filename, description, daynight,
                  price, purchase_price, is_gift, is_discontinued, is_wishlist,
                  currently_owned, gave_away, bottles_owned, fragrantica_url,
-                 rating, fill_level, private_notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 rating, fill_level, private_notes, size_ml)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (brand, name, subname, image_filename, description, daynight,
              price, purchase_price, is_gift, is_discontinued, is_wishlist,
              currently_owned, gave_away, bottles_owned, fragrantica_url,
-             rating, fill_level, private_notes),
+             rating, fill_level, private_notes, size_ml),
         )
         fragrance_id = cur.lastrowid
     else:
@@ -1363,13 +1424,13 @@ def _handle_form_submit(mode, fragrance_id, existing=None):
             SET brand = ?, name = ?, subname = ?, image_filename = ?, description = ?, daynight = ?,
                 price = ?, purchase_price = ?, is_gift = ?, is_discontinued = ?, is_wishlist = ?,
                 currently_owned = ?, gave_away = ?, bottles_owned = ?, fragrantica_url = ?,
-                rating = ?, fill_level = ?, private_notes = ?
+                rating = ?, fill_level = ?, private_notes = ?, size_ml = ?
             WHERE id = ?
             """,
             (brand, name, subname, image_filename, description, daynight,
              price, purchase_price, is_gift, is_discontinued, is_wishlist,
              currently_owned, gave_away, bottles_owned, fragrantica_url,
-             rating, fill_level, private_notes, fragrance_id),
+             rating, fill_level, private_notes, size_ml, fragrance_id),
         )
 
     replace_seasons(db, fragrance_id, seasons)
@@ -1945,7 +2006,7 @@ def export_csv():
             "Yes" if f["is_wishlist"] else "No",
             f["fragrantica_url"] or "",
             len(wear_rows),
-            wear_rows[0]["worn_at"] if wear_rows else "",
+            _utc_to_local_display(wear_rows[0]["worn_at"]) if wear_rows else "",
         ])
 
     return Response(

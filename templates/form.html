@@ -150,6 +150,13 @@
     </div>
 
     <div class="field">
+      <label for="fSizeMl">Size (ml) <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional — used to work out cost per wear)</span></label>
+      <input type="number" id="fSizeMl" name="size_ml" min="1" step="1" style="max-width:120px;"
+             placeholder="e.g. 100" value="{{ fd.get('size_ml') or '' }}">
+      <div class="field-note">Cost per wear assumes 10 sprays/ml and 6 sprays per wear (so a 100ml bottle is about 166 wears).</div>
+    </div>
+
+    <div class="field">
       <label>Bottle Photo</label>
       <div class="upload-box">
         <div class="upload-preview {{ 'no-bg' if fd.get('image_filename') and fd['image_filename'].endswith('.png') else '' }}" id="uploadPreview">

@@ -227,18 +227,18 @@
   {% if best_value or timeline %}
     <div class="stats-grid">
       <div class="stats-panel">
-        <div class="section-label">Best Value <span class="section-label-note">(lowest cost per wear)</span></div>
+        <div class="section-label">Best Value <span class="section-label-note">(most worn value gotten)</span></div>
         {% if best_value %}
           <ul class="needs-love-list">
             {% for row in best_value %}
               <li>
                 <a href="{{ url_for('detail', fragrance_id=row.id) }}">{{ row.brand }} {{ row.name }}</a>
-                <span class="needs-love-when">${{ '%.2f'|format(row.cost_per_wear) }}/wear</span>
+                <span class="needs-love-when">${{ '%.2f'|format(row.amount_worn) }} ({{ row.wear_count }}× @ ${{ '%.2f'|format(row.cost_per_wear) }})</span>
               </li>
             {% endfor %}
           </ul>
         {% else %}
-          <p class="stats-empty-note">Needs a purchase price and at least one logged wear to work this out.</p>
+          <p class="stats-empty-note">Needs a bottle size and a price on at least one logged-wear fragrance to work this out.</p>
         {% endif %}
       </div>
 
