@@ -94,6 +94,27 @@ header.site-header{
   transition:border-color .15s, color .15s, background .15s;
 }
 .random-pick-btn:hover{border-color:var(--gold);color:var(--gold-bright);background:var(--gold-glow);}
+
+.today-frag-slot{
+  display:flex;align-items:center;gap:8px;flex-shrink:1;min-width:0;
+  padding:5px 12px 5px 5px;border-radius:20px;
+  border:1px solid var(--line-strong);background:var(--bg-glass);
+}
+.today-frag-thumb{
+  width:26px;height:34px;border-radius:3px;overflow:hidden;flex-shrink:0;
+  background:var(--sapphire-deep);display:flex;align-items:center;justify-content:center;
+}
+.today-frag-thumb img{width:100%;height:100%;object-fit:cover;}
+.today-frag-thumb .ph{font-size:9px;color:var(--ink-faint);}
+.today-frag-text{
+  font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--ink-faint);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;
+}
+.today-frag-name{
+  font-family:'Space Grotesk',sans-serif;font-size:12.5px;font-weight:600;color:var(--sapphire-bright);
+  transition:color .15s;
+}
+.today-frag-name:hover{color:var(--gold-bright);}
 .brand-mark{display:flex;flex-direction:column;line-height:1;flex-shrink:0;cursor:pointer;}
 .brand-mark .title{
   font-family:'Space Grotesk',sans-serif;font-size:19px;font-weight:600;letter-spacing:0.01em;
@@ -1061,6 +1082,7 @@ a.bar-label:hover{color:var(--sapphire-bright);}
   .bar-row{grid-template-columns:84px 1fr 30px;gap:8px;}
   .menu-toggle{display:block;}
   .sidebar-collapse-toggle{display:none;}
+  .today-frag-slot{display:none;}
   .site-footer{left:0;}
   .bulk-toolbar{left:0;}
   aside.sidebar{

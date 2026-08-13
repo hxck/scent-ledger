@@ -184,6 +184,14 @@ def _get_setting(key, default=None):
     return row["value"] if row else default
 
 
+def _set_setting(key, value):
+    get_db().execute(
+        "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, value),
+    )
+
+
 def _humanize_days_ago(iso_datetime_str):
     """"2026-08-01 12:00:00" -> "today" / "yesterday" / "N days ago". Returns
     None on anything unparseable rather than raising — this is display text,
@@ -222,6 +230,60 @@ def _utc_to_local_display(iso_utc_str):
         tz = ZoneInfo("UTC")
     local = naive.replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)
     return local.strftime("%b %-d, %Y %-I:%M %p")
+
+
+def _set_todays_fragrance(fragrance_id):
+    """Marks a fragrance as today's pick for the header slot — called only
+    from "I Wore This Today". Deliberately not called from the random-pick
+    (dice) button: that's a separate, unrelated feature that just picks
+    something to look at and has nothing to do with what actually gets
+    logged as worn. Doesn't commit itself — the caller's own commit covers
+    this alongside whatever else it's doing in the same request."""
+    _set_setting("today_frag_id", str(fragrance_id))
+    _set_setting("today_frag_at", datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"))
+
+
+def _get_todays_fragrance_pick():
+    """For the header's Today's/Yesterday's Fragrance slot — set only by
+    "I Wore This Today" (see _set_todays_fragrance). The random-pick (dice)
+    button is unrelated and never touches this. Compares calendar dates in
+    the configured local timezone rather than UTC, so a late-night log
+    doesn't get mislabeled. Returns (None, None) if nothing's been set,
+    the fragrance no longer exists, or it's older than yesterday — there's
+    no good label for "3 days ago" here, so it just stops showing rather
+    than displaying something misleading."""
+    pick_id = _get_setting("today_frag_id")
+    picked_at = _get_setting("today_frag_at")
+    if not pick_id or not picked_at:
+        return None, None
+    try:
+        picked_naive = datetime.strptime(picked_at.split(".")[0], "%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return None, None
+
+    tz_name = _get_setting("timezone", "Etc/UTC") or "Etc/UTC"
+    try:
+        tz = ZoneInfo(tz_name)
+    except (ZoneInfoNotFoundError, ValueError):
+        tz = ZoneInfo("UTC")
+
+    picked_local_date = picked_naive.replace(tzinfo=ZoneInfo("UTC")).astimezone(tz).date()
+    today_local_date = datetime.now(tz).date()
+    day_diff = (today_local_date - picked_local_date).days
+
+    if day_diff == 0:
+        label = "Today's Fragrance"
+    elif day_diff == 1:
+        label = "Yesterday's Fragrance"
+    else:
+        return None, None
+
+    row = get_db().execute(
+        "SELECT id, brand, name, image_filename FROM fragrances WHERE id = ?", (pick_id,)
+    ).fetchone()
+    if row is None:
+        return None, None
+    return dict(row), label
 
 
 def _season_color_group(season_csv):
@@ -375,11 +437,13 @@ def inject_sidebar():
                 "SELECT id, name, is_private FROM shelves ORDER BY name COLLATE NOCASE"
             ).fetchall()
         ]
+    todays_frag, todays_frag_label = _get_todays_fragrance_pick()
     return {
         "sidebar_groups": groups, "sidebar_total": total, "sidebar_brand_count": len(groups),
         "wishlist_count": wishlist_count, "sidebar_owned_only": bool(session.get("sidebar_owned_only")),
         "sidebar_total_unfiltered": total_unfiltered, "missing_notes_count": missing_notes_count,
         "shelves_count": shelves_count, "all_shelves_for_bulk": all_shelves_for_bulk,
+        "todays_frag": todays_frag, "todays_frag_label": todays_frag_label,
     }
 
 
@@ -1830,6 +1894,7 @@ def log_wear(fragrance_id):
     if frag is None:
         abort(404)
     db.execute("INSERT INTO wear_log (fragrance_id) VALUES (?)", (fragrance_id,))
+    _set_todays_fragrance(fragrance_id)
     db.commit()
     flash("Logged today's wear.", "success")
     return redirect(url_for("detail", fragrance_id=fragrance_id))
