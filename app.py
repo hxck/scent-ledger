@@ -1079,9 +1079,18 @@ def _is_safe_remote_url(url):
 
 def fetch_remote_image_filename(url, max_width=None, remove_bg=False):
     """Download one specific image URL (from the bookmarklet payload), resize, and store it.
-    Returns a filename on success, or None (silently) on any failure — image import
-    is a nice-to-have, never something that should block saving the fragrance."""
-    if not url or not _is_safe_remote_url(url):
+    Returns a filename on success, or None on any failure — image import is a
+    nice-to-have and never blocks saving the fragrance either way. Failures
+    are logged (not silent) so a broken auto-import shows up in the
+    container logs with an actual reason, rather than just mysteriously not
+    working. A common one: Fragrantica sits behind Cloudflare, and a
+    server-side fetch like this — no real browser, no JS execution — is
+    exactly the kind of request Cloudflare's bot protection is built to
+    catch, sometimes intermittently. That shows up here as an HTTP 403."""
+    if not url:
+        return None
+    if not _is_safe_remote_url(url):
+        print(f"WARNING: image auto-import blocked by the SSRF guard for URL: {url}")
         return None
     try:
         req = urllib.request.Request(
@@ -1090,13 +1099,22 @@ def fetch_remote_image_filename(url, max_width=None, remove_bg=False):
         with urllib.request.urlopen(req, timeout=8) as resp:
             content_type = resp.headers.get("Content-Type", "")
             if not content_type.startswith("image/"):
+                print(f"WARNING: image auto-import got a non-image response (Content-Type: '{content_type}') for URL: {url}")
                 return None
             data = resp.read(MAX_REMOTE_IMAGE_BYTES + 1)
             if len(data) > MAX_REMOTE_IMAGE_BYTES:
+                print(f"WARNING: image auto-import response exceeded the {MAX_REMOTE_IMAGE_BYTES}-byte limit for URL: {url}")
                 return None
         img = Image.open(io.BytesIO(data))
         return _resize_and_store(img, max_width=max_width, remove_bg=remove_bg)
-    except (urllib.error.URLError, OSError, ValueError):
+    except urllib.error.HTTPError as e:
+        print(f"WARNING: image auto-import got HTTP {e.code} ({e.reason}) for URL: {url}")
+        return None
+    except urllib.error.URLError as e:
+        print(f"WARNING: image auto-import couldn't connect ({e.reason}) for URL: {url}")
+        return None
+    except (OSError, ValueError) as e:
+        print(f"WARNING: image auto-import downloaded data it couldn't process ({e}) for URL: {url}")
         return None
 
 
