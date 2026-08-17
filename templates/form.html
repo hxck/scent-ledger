@@ -273,6 +273,27 @@
   giftCheckbox.addEventListener('change', syncGiftState);
   syncGiftState(); // apply immediately in case Gift is already checked (edit mode)
 
+  const wishlistCheckbox = document.getElementById('fAddToWishlist');
+  const currentlyOwnedCheckbox = document.getElementById('fCurrentlyOwned');
+  const bottlesOwnedInput = document.getElementById('fBottlesOwned');
+  if (wishlistCheckbox && currentlyOwnedCheckbox && bottlesOwnedInput) {
+    let savedOwnedChecked = null;
+    let savedBottlesValue = null;
+    function syncWishlistFields() {
+      if (wishlistCheckbox.checked) {
+        savedOwnedChecked = currentlyOwnedCheckbox.checked;
+        savedBottlesValue = bottlesOwnedInput.value;
+        currentlyOwnedCheckbox.checked = false;
+        bottlesOwnedInput.value = 0;
+      } else {
+        currentlyOwnedCheckbox.checked = savedOwnedChecked === null ? true : savedOwnedChecked;
+        bottlesOwnedInput.value = savedBottlesValue === null ? 1 : savedBottlesValue;
+      }
+    }
+    wishlistCheckbox.addEventListener('change', syncWishlistFields);
+    syncWishlistFields(); // apply immediately in case it's pre-checked (e.g. via ?wishlist=1)
+  }
+
   function setRating(value) {
     document.getElementById('fRating').value = value > 0 ? value : '';
     document.querySelectorAll('.star-btn').forEach((btn) => {

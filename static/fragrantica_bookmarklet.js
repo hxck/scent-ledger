@@ -221,7 +221,15 @@
       var key = (labelEl.textContent || '').trim().toLowerCase();
       if (!(key in result)) return;
       var countEl = item.querySelector('.tabular-nums');
-      var count = countEl ? parseInt((countEl.textContent || '').replace(/[^0-9]/g, ''), 10) : NaN;
+      var count = NaN;
+      if (countEl) {
+        var raw = (countEl.textContent || '').trim();
+        var numMatch = raw.match(/[\d.]+/);
+        if (numMatch) {
+          var multiplier = /m$/i.test(raw) ? 1000000 : (/k$/i.test(raw) ? 1000 : 1);
+          count = Math.round(parseFloat(numMatch[0]) * multiplier);
+        }
+      }
       if (!isNaN(count)) result[key] = count;
     });
     return result;
