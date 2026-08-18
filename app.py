@@ -1150,9 +1150,14 @@ def cache_note_images(db, notes_images):
 BOOKMARKLET_JS_PATH = BASE_DIR / "static" / "fragrantica_bookmarklet.js"
 
 
+@functools.lru_cache(maxsize=8)
 def build_bookmarklet_href(add_url):
     """Reads the extraction script and inlines it as a javascript: bookmarklet URI,
-    pointed at this deployment's own /add URL."""
+    pointed at this deployment's own /add URL. Cached per add_url — the file and
+    the minification are both deterministic, so there's nothing to redo on every
+    request. Bounded cache size since in practice there's realistically only ever
+    one or two distinct add_urls (e.g. different hostnames pointing at the same
+    instance), not because we expect to actually need many."""
     with open(BOOKMARKLET_JS_PATH, "r") as f:
         src = f.read()
     # Strip `//` line comments BEFORE substituting the URL — the URL itself
@@ -2045,6 +2050,47 @@ def export_csv():
         "SELECT * FROM fragrances ORDER BY brand COLLATE NOCASE, name COLLATE NOCASE"
     ).fetchall()
 
+    # Batched lookups (one query each, not one per fragrance) — mirrors the
+    # GROUP_CONCAT/JOIN pattern get_all_fragrances_light() already uses.
+    SEP = chr(0x1F)  # ASCII unit separator: won't collide with real note/tag text
+
+    seasons_by_fid = {}
+    for r in db.execute(
+        """
+        SELECT fragrance_id, season FROM seasons
+        ORDER BY fragrance_id,
+                 CASE season WHEN 'Spring' THEN 0 WHEN 'Summer' THEN 1 WHEN 'Fall' THEN 2 WHEN 'Winter' THEN 3 ELSE 4 END
+        """
+    ).fetchall():
+        seasons_by_fid.setdefault(r["fragrance_id"], []).append(r["season"])
+
+    notes_by_fid = {}
+    for r in db.execute(
+        f"""
+        SELECT fragrance_id, tier, GROUP_CONCAT(note_text, '{SEP}') AS notes_concat
+        FROM (SELECT fragrance_id, tier, note_text FROM notes ORDER BY fragrance_id, tier, position)
+        GROUP BY fragrance_id, tier
+        """
+    ).fetchall():
+        notes_by_fid.setdefault(r["fragrance_id"], {})[r["tier"]] = r["notes_concat"].split(SEP)
+
+    tags_by_fid = {}
+    for r in db.execute(
+        f"""
+        SELECT ft.fragrance_id AS fragrance_id, GROUP_CONCAT(t.name, '{SEP}') AS tags_concat
+        FROM fragrance_tags ft JOIN tags t ON t.id = ft.tag_id
+        GROUP BY ft.fragrance_id
+        """
+    ).fetchall():
+        tags_by_fid[r["fragrance_id"]] = r["tags_concat"].split(SEP)
+
+    wear_by_fid = {
+        r["fragrance_id"]: (r["wear_count"], r["last_worn"])
+        for r in db.execute(
+            "SELECT fragrance_id, COUNT(*) AS wear_count, MAX(worn_at) AS last_worn FROM wear_log GROUP BY fragrance_id"
+        ).fetchall()
+    }
+
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
@@ -2056,26 +2102,16 @@ def export_csv():
     ])
     for f in fragrances:
         fid = f["id"]
-        seasons = [r["season"] for r in db.execute(
-            "SELECT season FROM seasons WHERE fragrance_id = ?", (fid,)
-        ).fetchall()]
-        notes_rows = db.execute(
-            "SELECT tier, note_text FROM notes WHERE fragrance_id = ? ORDER BY tier, position", (fid,)
-        ).fetchall()
-        notes_by_tier = {"top": [], "middle": [], "base": []}
-        for n in notes_rows:
-            notes_by_tier[n["tier"]].append(n["note_text"])
-        tags = [r["name"] for r in db.execute(
-            "SELECT t.name FROM tags t JOIN fragrance_tags ft ON ft.tag_id = t.id WHERE ft.fragrance_id = ?",
-            (fid,),
-        ).fetchall()]
-        wear_rows = db.execute(
-            "SELECT worn_at FROM wear_log WHERE fragrance_id = ? ORDER BY worn_at DESC", (fid,)
-        ).fetchall()
+        seasons = seasons_by_fid.get(fid, [])
+        notes_by_tier = notes_by_fid.get(fid, {})
+        tags = tags_by_fid.get(fid, [])
+        wear_count, last_worn = wear_by_fid.get(fid, (0, None))
         writer.writerow([
             f["brand"], f["name"], f["subname"] or "", f["description"] or "", f["daynight"] or "",
             ", ".join(seasons),
-            "; ".join(notes_by_tier["top"]), "; ".join(notes_by_tier["middle"]), "; ".join(notes_by_tier["base"]),
+            "; ".join(notes_by_tier.get("top", [])),
+            "; ".join(notes_by_tier.get("middle", [])),
+            "; ".join(notes_by_tier.get("base", [])),
             ", ".join(tags),
             f["price"] if f["price"] is not None else "",
             f["purchase_price"] if f["purchase_price"] is not None else "",
@@ -2088,8 +2124,8 @@ def export_csv():
             "Yes" if f["gave_away"] else "No",
             "Yes" if f["is_wishlist"] else "No",
             f["fragrantica_url"] or "",
-            len(wear_rows),
-            _utc_to_local_display(wear_rows[0]["worn_at"]) if wear_rows else "",
+            wear_count,
+            _utc_to_local_display(last_worn) if last_worn else "",
         ])
 
     return Response(
