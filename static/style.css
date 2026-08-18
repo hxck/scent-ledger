@@ -18,7 +18,9 @@
   --sapphire-glow: rgba(110, 155, 255, 0.28);
   --sapphire-glow-soft: rgba(110, 155, 255, 0.12);
 
-  /* gold = luxury accent, used sparingly (CTA, premium badges) */
+  /* gold = luxury accent, used sparingly (CTA, premium badges) — stays
+     constant across every theme on purpose, so it always reads as "the"
+     luxury/CTA color rather than shifting meaning per theme */
   --gold: #D9B679;
   --gold-bright: #EACB93;
   --gold-glow: rgba(217, 182, 121, 0.22);
@@ -33,14 +35,158 @@
   --radius: 6px;
   --shadow: 0 20px 50px rgba(2, 6, 16, 0.55);
   --glow-ring: 0 0 0 1px var(--sapphire-glow-soft), 0 0 24px -6px var(--sapphire-glow);
+
+  /* the three ambient glow blobs behind the whole page — tinted to match
+     the primary accent (bg-glow-1/3) and the gold accent (bg-glow-2) */
+  --bg-glow-1: rgba(62,107,224,0.16);
+  --bg-glow-2: rgba(217,182,121,0.07);
+  --bg-glow-3: rgba(62,107,224,0.10);
+  --sidebar-tint: rgba(13,22,38,0.4);
+  --chrome-glass: rgba(7,11,21,0.78);
+  --chrome-glass-strong: rgba(7,11,21,0.9);
+  --chrome-glass-strongest: rgba(7,11,21,0.96);
+}
+
+/* ============================================================
+   THEMES — each block only overrides what actually needs to
+   differ; anything not redefined here (gold/cyan/rose, --radius,
+   --glow-ring, etc.) correctly falls through to :root above,
+   since CSS custom properties resolve wherever they're USED, not
+   where they're defined. Applied via <html data-theme="...">.
+   ============================================================ */
+
+/* Royal Purple — same structure as the default, purple instead of blue */
+html[data-theme="purple"]{
+  --bg: #0F0819;
+  --bg-elevated: #170F26;
+  --bg-card: #1C1130;
+  --bg-glass: rgba(28, 17, 48, 0.55);
+
+  --ink: #EDE7FA;
+  --ink-dim: #AC9BC9;
+  --ink-faint: #6B577F;
+
+  --sapphire: #7C3AED;
+  --sapphire-bright: #A78BFA;
+  --sapphire-deep: #241640;
+  --sapphire-glow: rgba(167, 139, 250, 0.28);
+  --sapphire-glow-soft: rgba(167, 139, 250, 0.12);
+
+  --line: rgba(167, 139, 214, 0.14);
+  --line-strong: rgba(167, 139, 214, 0.26);
+
+  --bg-glow-1: rgba(124, 58, 237, 0.18);
+  --bg-glow-3: rgba(124, 58, 237, 0.11);
+  --sidebar-tint: rgba(23,15,38,0.4);
+  --chrome-glass: rgba(15,8,25,0.78);
+  --chrome-glass-strong: rgba(15,8,25,0.9);
+  --chrome-glass-strongest: rgba(15,8,25,0.96);
+}
+
+/* Emerald Dusk — same structure again, deep green instead of blue */
+html[data-theme="emerald"]{
+  --bg: #071510;
+  --bg-elevated: #0D2019;
+  --bg-card: #0F2D20;
+  --bg-glass: rgba(15, 45, 32, 0.55);
+
+  --ink: #E7FAF0;
+  --ink-dim: #9BC9AA;
+  --ink-faint: #577F64;
+
+  --sapphire: #1FA060;
+  --sapphire-bright: #3ECE87;
+  --sapphire-deep: #123423;
+  --sapphire-glow: rgba(62, 206, 135, 0.28);
+  --sapphire-glow-soft: rgba(62, 206, 135, 0.12);
+
+  --line: rgba(126, 214, 160, 0.14);
+  --line-strong: rgba(126, 214, 160, 0.26);
+
+  --bg-glow-1: rgba(31, 160, 96, 0.18);
+  --bg-glow-3: rgba(31, 160, 96, 0.11);
+  --sidebar-tint: rgba(13,32,25,0.4);
+  --chrome-glass: rgba(7,21,16,0.78);
+  --chrome-glass-strong: rgba(7,21,16,0.9);
+  --chrome-glass-strongest: rgba(7,21,16,0.96);
+}
+
+/* OLED Black — a background-darkness variant of the default sapphire
+   theme (not a new accent color), true black for OLED screens. Glow
+   blobs are dialed way back rather than removed outright, since some
+   ambient depth still reads as "designed," while a fully flat black
+   page reads as "unstyled." */
+html[data-theme="oled"]{
+  --bg: #000000;
+  --bg-elevated: #060606;
+  --bg-card: #0A0A0B;
+  --bg-glass: rgba(10, 10, 11, 0.6);
+
+  --ink-dim: #98A6C4;
+  --ink-faint: #545F78;
+
+  --line: rgba(126, 154, 214, 0.10);
+  --line-strong: rgba(126, 154, 214, 0.20);
+
+  --bg-glow-1: rgba(62,107,224,0.08);
+  --bg-glow-2: rgba(217,182,121,0.04);
+  --bg-glow-3: rgba(62,107,224,0.05);
+  --sidebar-tint: rgba(6,6,6,0.4);
+  --chrome-glass: rgba(0,0,0,0.85);
+  --chrome-glass-strong: rgba(0,0,0,0.94);
+  --chrome-glass-strongest: rgba(0,0,0,0.97);
+
+  --shadow: 0 20px 50px rgba(0, 0, 0, 0.75);
+}
+
+/* Light — warm ivory rather than a stark white, to stay in keeping with
+   the "never true black/white, easier on the eyes" philosophy the dark
+   theme already follows, just inverted. Accent colors are all darkened
+   versions of their dark-mode counterparts for AA-ish contrast as text
+   against a light background, not just as backgrounds/borders. */
+html[data-theme="light"]{
+  --bg: #F7F4EE;
+  --bg-elevated: #FFFFFF;
+  --bg-card: #FFFFFF;
+  --bg-glass: rgba(255, 255, 255, 0.75);
+
+  --ink: #1D1B2E;
+  --ink-dim: #4E4B66;
+  --ink-faint: #8B889E;
+
+  --sapphire: #3E5FD9;
+  --sapphire-bright: #2A45AD;
+  --sapphire-deep: #E3E9FB;
+  --sapphire-glow: rgba(62, 95, 217, 0.18);
+  --sapphire-glow-soft: rgba(62, 95, 217, 0.08);
+
+  --gold: #A8763A;
+  --gold-bright: #8A5F2B;
+  --gold-glow: rgba(168, 118, 58, 0.16);
+
+  --cyan: #1B8479;
+  --rose: #B5584A;
+
+  --line: rgba(62, 95, 217, 0.14);
+  --line-strong: rgba(62, 95, 217, 0.26);
+
+  --bg-glow-1: rgba(62, 95, 217, 0.08);
+  --bg-glow-2: rgba(168, 118, 58, 0.05);
+  --bg-glow-3: rgba(62, 95, 217, 0.05);
+  --sidebar-tint: rgba(62, 95, 217, 0.05);
+  --chrome-glass: rgba(255,255,255,0.85);
+  --chrome-glass-strong: rgba(255,255,255,0.92);
+  --chrome-glass-strongest: rgba(255,255,255,0.96);
+
+  --shadow: 0 20px 40px rgba(30, 30, 60, 0.10);
 }
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}
 body{
   background:
-    radial-gradient(ellipse 900px 500px at 12% -10%, rgba(62,107,224,0.16), transparent 60%),
-    radial-gradient(ellipse 700px 500px at 100% 0%, rgba(217,182,121,0.07), transparent 55%),
-    radial-gradient(ellipse 900px 600px at 50% 110%, rgba(62,107,224,0.10), transparent 60%),
+    radial-gradient(ellipse 900px 500px at 12% -10%, var(--bg-glow-1), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 100% 0%, var(--bg-glow-2), transparent 55%),
+    radial-gradient(ellipse 900px 600px at 50% 110%, var(--bg-glow-3), transparent 60%),
     var(--bg);
   background-attachment:fixed;
   color:var(--ink);
@@ -64,7 +210,7 @@ header.site-header{
   position:sticky;top:0;z-index:50;
   display:flex;align-items:center;gap:20px;
   padding:14px 24px;
-  background:rgba(7,11,21,0.78);
+  background:var(--chrome-glass);
   backdrop-filter:blur(14px);
   -webkit-backdrop-filter:blur(14px);
   border-bottom:1px solid var(--line);
@@ -94,6 +240,37 @@ header.site-header{
   transition:border-color .15s, color .15s, background .15s;
 }
 .random-pick-btn:hover{border-color:var(--gold);color:var(--gold-bright);background:var(--gold-glow);}
+
+.theme-switcher{position:relative;flex-shrink:0;}
+.theme-switcher-toggle{
+  display:flex;align-items:center;justify-content:center;
+  width:40px;height:40px;border-radius:var(--radius);
+  background:var(--bg-glass);border:1px solid var(--line-strong);color:var(--ink-dim);
+  cursor:pointer;transition:border-color .15s, color .15s, background .15s;
+}
+.theme-switcher-toggle:hover{border-color:var(--sapphire);color:var(--sapphire-bright);background:var(--sapphire-glow-soft);}
+.theme-switcher-menu{
+  display:none;flex-direction:column;gap:2px;
+  position:absolute;top:calc(100% + 8px);right:0;z-index:60;
+  min-width:180px;padding:6px;border-radius:var(--radius);
+  background:var(--bg-elevated);border:1px solid var(--line-strong);
+  box-shadow:var(--shadow);
+}
+.theme-switcher-menu.open{display:flex;}
+.theme-option{
+  display:flex;align-items:center;gap:10px;width:100%;
+  background:none;border:none;color:var(--ink-dim);
+  padding:9px 10px;border-radius:4px;font-size:13px;font-family:'Inter',sans-serif;
+  cursor:pointer;text-align:left;transition:background .15s, color .15s;
+}
+.theme-option:hover{background:var(--bg-glass);color:var(--ink);}
+.theme-option.active{color:var(--sapphire-bright);}
+.theme-swatch{width:16px;height:16px;border-radius:50%;flex-shrink:0;border:1px solid rgba(255,255,255,0.15);}
+.theme-swatch-sapphire{background:#3E6BE0;}
+.theme-swatch-purple{background:#7C3AED;}
+.theme-swatch-emerald{background:#1FA060;}
+.theme-swatch-oled{background:#000000;border-color:rgba(255,255,255,0.3);}
+.theme-swatch-light{background:#F7F4EE;border-color:rgba(0,0,0,0.15);}
 
 .today-frag-slot{
   display:flex;align-items:center;gap:8px;flex-shrink:1;min-width:0;
@@ -175,7 +352,7 @@ form.search-form{flex:1;display:flex;max-width:460px;margin-left:8px;}
 aside.sidebar{
   width:250px;flex-shrink:0;border-right:1px solid var(--line);
   padding:22px 16px 60px;height:calc(100vh - 61px);position:sticky;top:61px;overflow-y:auto;
-  background:linear-gradient(180deg, rgba(13,22,38,0.4), transparent 200px);
+  background:linear-gradient(180deg, var(--sidebar-tint), transparent 200px);
   transition:width .2s ease, padding .2s ease, border-color .2s ease;
 }
 /* Scoped to desktop widths on purpose — below the mobile breakpoint the
@@ -279,7 +456,7 @@ main.content{flex:1;min-width:0;padding:40px 44px 90px;}
   position:fixed;bottom:0;left:250px;right:0;z-index:30;
   display:flex;align-items:center;justify-content:center;gap:10px;
   height:44px;
-  background:rgba(7,11,21,0.9);
+  background:var(--chrome-glass-strong);
   backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
   border-top:1px solid var(--line);
   font-family:'JetBrains Mono',monospace;font-size:11.5px;
@@ -288,7 +465,7 @@ main.content{flex:1;min-width:0;padding:40px 44px 90px;}
   position:fixed;bottom:44px;left:250px;right:0;z-index:35;
   display:none;align-items:center;justify-content:center;gap:18px;
   padding:14px 24px;flex-wrap:wrap;
-  background:rgba(7,11,21,0.96);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  background:var(--chrome-glass-strongest);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
   border-top:1px solid var(--sapphire);
 }
 .bulk-toolbar.visible{display:flex;}
@@ -348,7 +525,7 @@ main.content{flex:1;min-width:0;padding:40px 44px 90px;}
 .card-select-checkbox-label{
   display:none;position:absolute;top:10px;left:10px;z-index:5;
   width:26px;height:26px;border-radius:6px;cursor:pointer;
-  background:rgba(7,11,21,0.75);backdrop-filter:blur(6px);
+  background:var(--chrome-glass);backdrop-filter:blur(6px);
   border:1px solid var(--line-strong);align-items:center;justify-content:center;
 }
 body.bulk-select-mode .card-select-checkbox-label{display:flex;}
@@ -519,7 +696,7 @@ body.bulk-select-mode .card-select-checkbox-label{display:flex;}
 .compare-table tr:last-child td{border-bottom:none;}
 .compare-row-label{
   font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.06em;text-transform:uppercase;
-  color:var(--ink-faint);white-space:nowrap;background:rgba(13,22,38,0.4);
+  color:var(--ink-faint);white-space:nowrap;background:var(--sidebar-tint);
 }
 .compare-col-header{display:block;text-decoration:none;transition:opacity .15s;}
 .compare-col-header:hover{opacity:0.8;}
@@ -1124,6 +1301,7 @@ a.bar-label:hover{color:var(--sapphire-bright);}
   .brand-mark .sub{display:none;}
   .add-btn-label{display:none;}
   .add-btn{padding:9px 11px;}
+  .menu-toggle, .sidebar-collapse-toggle, .mobile-search-btn, .random-pick-btn, .theme-switcher-toggle{width:34px;height:34px;}
   /* No room for a third header button at this width — Shelves already has
      its own "+ Add Shelf" button on the /shelves page, reachable via the
      hamburger menu, so nothing is actually lost here. */
@@ -1141,9 +1319,9 @@ a.bar-label:hover{color:var(--sapphire-bright);}
 }
 
 @media (max-width:400px){
-  header.site-header{padding:10px 12px;gap:5px;}
+  header.site-header{padding:10px 12px;gap:4px;}
   .brand-mark .title{font-size:13px;}
-  .menu-toggle, .sidebar-collapse-toggle, .mobile-search-btn, .random-pick-btn{width:34px;height:34px;}
+  .menu-toggle, .sidebar-collapse-toggle, .mobile-search-btn, .random-pick-btn, .theme-switcher-toggle{width:32px;height:32px;}
   .header-admin-actions{gap:3px;}
   .add-btn{padding:8px 9px;}
   .logout-btn, .login-link{padding:8px 6px;font-size:10.5px;}

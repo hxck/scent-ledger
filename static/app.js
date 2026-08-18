@@ -466,3 +466,41 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 });
+
+// Theme switcher. The actual theme is applied pre-paint by an inline
+// script in <head> (see base.html) — this just handles the menu UI and
+// persisting a change once one's made.
+function toggleThemeMenu() {
+  const menu = document.getElementById('themeSwitcherMenu');
+  if (menu) menu.classList.toggle('open');
+}
+
+function setTheme(theme) {
+  if (theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+    localStorage.removeItem('theme');
+  }
+  updateThemeMenuActiveState();
+  toggleThemeMenu();
+}
+
+function updateThemeMenuActiveState() {
+  const current = document.documentElement.getAttribute('data-theme') || '';
+  document.querySelectorAll('.theme-option').forEach((btn) => {
+    btn.classList.toggle('active', (btn.dataset.theme || '') === current);
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  updateThemeMenuActiveState();
+  document.addEventListener('click', (e) => {
+    const switcher = document.querySelector('.theme-switcher');
+    const menu = document.getElementById('themeSwitcherMenu');
+    if (switcher && menu && menu.classList.contains('open') && !switcher.contains(e.target)) {
+      menu.classList.remove('open');
+    }
+  });
+});
