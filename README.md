@@ -1,3 +1,13 @@
+<div align="center">
+
+![GitHub last commit](https://img.shields.io/github/last-commit/hxck/scent-ledger)
+![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-a3e635?style=flat-square)
+![Self-hosted](https://img.shields.io/badge/self--hosted-%F0%9F%8F%A0-60a5fa?style=flat-square)
+![Docker](https://img.shields.io/badge/Docker-compose-2496ED?style=flat-square&logo=docker&logoColor=white)
+![Telemetry](https://img.shields.io/badge/telemetry-none-f472b6?style=flat-square)
+
+</div>
+
 # The Scent Ledger
 
 A personal fragrance collection catalog. Flask + SQLite backend, server-rendered
