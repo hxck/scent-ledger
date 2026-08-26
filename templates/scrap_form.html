@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% set s = scrap or {} %}
+{% block title %}{{ 'Edit Scrap' if mode == 'edit' else 'New Scrap' }} — The Scent Ledger{% endblock %}
+{% block breadcrumbs %}
+  <span class="breadcrumb-sep">/</span><a href="{{ url_for('scraps_list') }}">Scraps</a>
+  {% if mode == 'edit' %}
+    <span class="breadcrumb-sep">/</span><a href="{{ url_for('scrap_detail', scrap_id=s['id']) }}">{{ s['title'] }}</a>
+    <span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Edit</span>
+  {% else %}
+    <span class="breadcrumb-sep">/</span><span class="breadcrumb-current">New Scrap</span>
+  {% endif %}
+{% endblock %}
+{% block content %}
+
+<div class="content-narrow">
+  <h1 class="form-title">{{ 'Edit Scrap' if mode == 'edit' else 'New Scrap' }}</h1>
+  <p class="form-hint">Full Markdown supported — headings, lists, links, tables, code blocks, bold/italic.</p>
+
+  <form method="post" novalidate>
+    <div class="field">
+      <label for="fScrapTitle">Title</label>
+      <input type="text" id="fScrapTitle" name="title" placeholder="e.g. Fall 2026 shortlist" value="{{ s.get('title', '') }}">
+    </div>
+
+    <div class="field">
+      <label>Body</label>
+      <div class="scrap-editor-tabs">
+        <button type="button" class="scrap-tab active" id="scrapTabEdit" onclick="showScrapTab('edit')">Edit</button>
+        <button type="button" class="scrap-tab" id="scrapTabPreview" onclick="showScrapTab('preview')">Preview</button>
+      </div>
+      <textarea id="fScrapBody" name="body_markdown" class="scrap-editor-textarea"
+                placeholder="Write in Markdown — # headings, **bold**, *italic*, - lists, [links](https://...), &#96;&#96;&#96; code blocks &#96;&#96;&#96;...">{{ s.get('body_markdown', '') }}</textarea>
+      <div id="scrapPreviewPane" class="scrap-body scrap-preview-pane" style="display:none;"></div>
+    </div>
+
+    <div class="field">
+      <label>Privacy</label>
+      <div class="checkbox-row">
+        <label class="pill-check">
+          <input type="checkbox" name="is_private" value="1" {{ 'checked' if s.get('is_private') else '' }}>
+          <span>🔒 Private (hidden from public visitors)</span>
+        </label>
+      </div>
+      <div class="field-note">Only visible when you're logged in. You can flip this later from the scrap's own page.</div>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn-primary">{{ 'Save Changes' if mode == 'edit' else 'Save Scrap' }}</button>
+      <a class="btn-ghost" href="{{ url_for('scrap_detail', scrap_id=s['id']) if mode == 'edit' else url_for('scraps_list') }}" style="display:inline-block;">Cancel</a>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function showScrapTab(tab) {
+    const editBtn = document.getElementById('scrapTabEdit');
+    const previewBtn = document.getElementById('scrapTabPreview');
+    const textarea = document.getElementById('fScrapBody');
+    const previewPane = document.getElementById('scrapPreviewPane');
+
+    if (tab === 'preview') {
+      fetch('{{ url_for("preview_scrap") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'body_markdown=' + encodeURIComponent(textarea.value),
+      })
+        .then((r) => r.text())
+        .then((html) => {
+          previewPane.innerHTML = html || '<p class="description" style="font-style:italic;color:var(--ink-faint);">Nothing written yet.</p>';
+        })
+        .catch(() => {
+          previewPane.innerHTML = '<p class="description" style="color:var(--rose);">Couldn\'t load the preview — your text is safe, just try again.</p>';
+        });
+      textarea.style.display = 'none';
+      previewPane.style.display = 'block';
+      editBtn.classList.remove('active');
+      previewBtn.classList.add('active');
+    } else {
+      textarea.style.display = 'block';
+      previewPane.style.display = 'none';
+      previewBtn.classList.remove('active');
+      editBtn.classList.add('active');
+    }
+  }
+</script>
+{% endblock %}

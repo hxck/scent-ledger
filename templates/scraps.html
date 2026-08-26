@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Scraps — The Scent Ledger{% endblock %}
+{% block breadcrumbs %}<span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Scraps</span>{% endblock %}
+{% block content %}
+
+<div class="content-centered">
+<div class="hero" style="padding-bottom:24px;margin-bottom:24px;">
+  <h1 style="font-size:clamp(26px,3vw,36px);">Scraps</h1>
+  <p>Future purchases, brainstorming, anything fragrance-related worth remembering. Full Markdown supported.</p>
+</div>
+
+{% if is_admin %}
+  <a class="btn-primary" href="{{ url_for('add_scrap') }}" style="display:inline-block;text-decoration:none;margin-bottom:28px;">+ New Scrap</a>
+{% endif %}
+
+{% if scraps|length == 0 %}
+  <div class="empty-state">
+    <h2>Nothing here yet</h2>
+    <p>{{ 'Jot something down to get started.' if is_admin else 'Nothing has been written yet.' }}</p>
+  </div>
+{% else %}
+  <div class="scrap-list">
+    {% for s in scraps %}
+      <a class="scrap-card" href="{{ url_for('scrap_detail', scrap_id=s['id']) }}">
+        <div class="scrap-card-title">
+          {{ s['title'] }}
+          {% if s['is_private'] %}<span class="shelf-private-badge" title="Private — hidden from public visitors">🔒</span>{% endif %}
+        </div>
+        {% if s['preview'] %}<div class="scrap-card-preview">{{ s['preview'] }}</div>{% endif %}
+        <div class="scrap-card-date">{{ s['created_at_display'] }}</div>
+      </a>
+    {% endfor %}
+  </div>
+{% endif %}
+</div>
+
+{% endblock %}

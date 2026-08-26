@@ -92,6 +92,18 @@ CREATE TABLE IF NOT EXISTS app_settings (
     value           TEXT NOT NULL
 );
 
+-- Free-form personal notes ("Scraps") — future purchases, brainstorming,
+-- anything the admin wants to jot down. Full Markdown body, rendered (and
+-- sanitized) at display time, never stored as HTML.
+CREATE TABLE IF NOT EXISTS scraps (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    title           TEXT NOT NULL,
+    body_markdown   TEXT NOT NULL DEFAULT '',
+    is_private      INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_fragrances_brand ON fragrances(brand);
 CREATE INDEX IF NOT EXISTS idx_notes_fragrance ON notes(fragrance_id);
 CREATE INDEX IF NOT EXISTS idx_fragrance_tags_fragrance ON fragrance_tags(fragrance_id);
@@ -99,3 +111,4 @@ CREATE INDEX IF NOT EXISTS idx_fragrance_tags_tag ON fragrance_tags(tag_id);
 CREATE INDEX IF NOT EXISTS idx_shelf_fragrances_shelf ON shelf_fragrances(shelf_id);
 CREATE INDEX IF NOT EXISTS idx_shelf_fragrances_fragrance ON shelf_fragrances(fragrance_id);
 CREATE INDEX IF NOT EXISTS idx_wear_log_fragrance ON wear_log(fragrance_id);
+CREATE INDEX IF NOT EXISTS idx_scraps_created_at ON scraps(created_at);

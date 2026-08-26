@@ -21,6 +21,8 @@
       {% endif %}
     </div>
 
+    <div class="detail-zone-label">Your Bottle</div>
+
     <div class="ownership-panel">
       <span class="ownership-badge {{ 'owned' if f['currently_owned'] else 'not-owned' }}">
         {{ '✓ Currently Owned' if f['currently_owned'] else '✗ Not Currently Owned' }}
@@ -71,6 +73,13 @@
         {% endif %}
       {% endif %}
     </div>
+
+    {% if is_admin and f['private_notes'] %}
+      <div class="private-notes-panel">
+        <div class="section-label private-notes-label">🔒 Private Notes <span class="private-notes-hint">(only you can see this)</span></div>
+        <p class="description private-notes">{{ f['private_notes'] }}</p>
+      </div>
+    {% endif %}
 
     {% if f['price'] is not none or f['purchase_price'] is not none or f['is_gift'] %}
       <div class="price-panel">
@@ -157,14 +166,11 @@
       {% if f['daynight'] %}<span class="badge daynight">{{ f['daynight'] }}</span>{% endif %}
     </div>
 
+    <div class="detail-zone-label">About This Fragrance</div>
+
     {% if f['description'] %}
       <div class="section-label">Description</div>
       <p class="description">{{ f['description'] }}</p>
-    {% endif %}
-
-    {% if is_admin and f['private_notes'] %}
-      <div class="section-label private-notes-label">🔒 Private Notes <span class="private-notes-hint">(only you can see this)</span></div>
-      <p class="description private-notes">{{ f['private_notes'] }}</p>
     {% endif %}
 
     <div class="section-label">Note Breakdown</div>

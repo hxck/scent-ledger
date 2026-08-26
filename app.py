@@ -22,6 +22,8 @@ from flask import (
 )
 from werkzeug.utils import secure_filename
 from PIL import Image
+import markdown as markdown_lib
+import bleach
 
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = os.environ.get("DATABASE_PATH", str(BASE_DIR / "data" / "scent_ledger.db"))
@@ -149,6 +151,10 @@ def _run_migrations(conn):
     if "size_ml" not in existing_cols:
         conn.execute("ALTER TABLE fragrances ADD COLUMN size_ml INTEGER")
 
+    scraps_cols = {row[1] for row in conn.execute("PRAGMA table_info(scraps)").fetchall()}
+    if "is_private" not in scraps_cols:
+        conn.execute("ALTER TABLE scraps ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0")
+
 
 def init_db():
     schema_path = BASE_DIR / "schema.sql"
@@ -230,6 +236,36 @@ def _utc_to_local_display(iso_utc_str):
         tz = ZoneInfo("UTC")
     local = naive.replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)
     return local.strftime("%b %-d, %Y %-I:%M %p")
+
+
+_SCRAP_ALLOWED_TAGS = [
+    "p", "br", "strong", "em", "del", "ul", "ol", "li",
+    "h1", "h2", "h3", "h4", "h5", "h6",
+    "blockquote", "code", "pre", "a", "hr",
+    "table", "thead", "tbody", "tr", "th", "td",
+]
+_SCRAP_ALLOWED_ATTRS = {"a": ["href", "title"]}
+_SCRAP_ALLOWED_PROTOCOLS = ["http", "https", "mailto"]
+
+
+def render_scrap_markdown(text):
+    """Markdown -> sanitized HTML for Scraps. Scraps are admin-authored but
+    publicly viewable, and Markdown allows embedding raw HTML by default —
+    bleach strips anything outside an explicit allowlist (no <script>,
+    no images, no javascript: links, no inline styles/event handlers)
+    before this is ever marked safe for the template. Deliberately no
+    <img> support: Scraps has no upload pipeline, so any image tag could
+    only point at an arbitrary external URL, not something we control."""
+    if not text:
+        return ""
+    html = markdown_lib.markdown(text, extensions=["fenced_code", "tables", "nl2br"])
+    return bleach.clean(
+        html, tags=_SCRAP_ALLOWED_TAGS, attributes=_SCRAP_ALLOWED_ATTRS,
+        protocols=_SCRAP_ALLOWED_PROTOCOLS, strip=True,
+    )
+
+
+app.jinja_env.filters["render_scrap_markdown"] = render_scrap_markdown
 
 
 def _set_todays_fragrance(fragrance_id):
@@ -438,12 +474,17 @@ def inject_sidebar():
             ).fetchall()
         ]
     todays_frag, todays_frag_label = _get_todays_fragrance_pick()
+    scraps_count_query = "SELECT COUNT(*) AS c FROM scraps"
+    if not session.get("logged_in"):
+        scraps_count_query += " WHERE is_private = 0"
+    scraps_count = get_db().execute(scraps_count_query).fetchone()["c"]
     return {
         "sidebar_groups": groups, "sidebar_total": total, "sidebar_brand_count": len(groups),
         "wishlist_count": wishlist_count, "sidebar_owned_only": bool(session.get("sidebar_owned_only")),
         "sidebar_total_unfiltered": total_unfiltered, "missing_notes_count": missing_notes_count,
         "shelves_count": shelves_count, "all_shelves_for_bulk": all_shelves_for_bulk,
         "todays_frag": todays_frag, "todays_frag_label": todays_frag_label,
+        "scraps_count": scraps_count,
     }
 
 
@@ -2248,6 +2289,131 @@ def stats():
         best_value=stats_best_value(5),
         timeline=stats_timeline(12),
     )
+
+
+@app.route("/scraps")
+def scraps_list():
+    db = get_db()
+    query = "SELECT id, title, body_markdown, is_private, created_at, updated_at FROM scraps"
+    if not session.get("logged_in"):
+        query += " WHERE is_private = 0"
+    query += " ORDER BY created_at DESC"
+    scraps = db.execute(query).fetchall()
+    result = []
+    for s in scraps:
+        d = dict(s)
+        plain = bleach.clean(render_scrap_markdown(d["body_markdown"]), tags=[], strip=True)
+        plain = " ".join(plain.split())
+        d["preview"] = (plain[:180] + "…") if len(plain) > 180 else plain
+        d["created_at_display"] = _utc_to_local_display(d["created_at"])
+        result.append(d)
+    return render_template("scraps.html", scraps=result)
+
+
+@app.route("/scraps/<int:scrap_id>")
+def scrap_detail(scrap_id):
+    db = get_db()
+    scrap = db.execute("SELECT * FROM scraps WHERE id = ?", (scrap_id,)).fetchone()
+    if scrap is None:
+        abort(404)
+    if scrap["is_private"] and not session.get("logged_in"):
+        # Same response as "doesn't exist" — a private scrap's existence
+        # isn't revealed to a visitor who isn't allowed to see it.
+        abort(404)
+    d = dict(scrap)
+    d["created_at_display"] = _utc_to_local_display(d["created_at"])
+    d["updated_at_display"] = _utc_to_local_display(d["updated_at"])
+    return render_template("scrap_detail.html", scrap=d)
+
+
+@app.route("/scraps/add", methods=["GET", "POST"])
+@login_required
+def add_scrap():
+    if request.method == "GET":
+        return render_template("scrap_form.html", mode="add", scrap=None)
+
+    title = request.form.get("title", "").strip()
+    body = request.form.get("body_markdown", "").strip()
+    is_private = bool(request.form.get("is_private"))
+    if not title:
+        flash("Give it a title.", "error")
+        return render_template(
+            "scrap_form.html", mode="add",
+            scrap={"title": title, "body_markdown": body, "is_private": is_private},
+        ), 400
+
+    db = get_db()
+    cur = db.execute(
+        "INSERT INTO scraps (title, body_markdown, is_private) VALUES (?, ?, ?)",
+        (title, body, is_private),
+    )
+    db.commit()
+    flash(f'Saved "{title}".', "success")
+    return redirect(url_for("scrap_detail", scrap_id=cur.lastrowid))
+
+
+@app.route("/scraps/<int:scrap_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_scrap(scrap_id):
+    db = get_db()
+    scrap = db.execute("SELECT * FROM scraps WHERE id = ?", (scrap_id,)).fetchone()
+    if scrap is None:
+        abort(404)
+
+    if request.method == "GET":
+        return render_template("scrap_form.html", mode="edit", scrap=dict(scrap))
+
+    title = request.form.get("title", "").strip()
+    body = request.form.get("body_markdown", "").strip()
+    is_private = bool(request.form.get("is_private"))
+    if not title:
+        flash("Give it a title.", "error")
+        stub = dict(scrap)
+        stub.update(title=title, body_markdown=body, is_private=is_private)
+        return render_template("scrap_form.html", mode="edit", scrap=stub), 400
+
+    db.execute(
+        "UPDATE scraps SET title = ?, body_markdown = ?, is_private = ?, updated_at = datetime('now') WHERE id = ?",
+        (title, body, is_private, scrap_id),
+    )
+    db.commit()
+    flash(f'Saved "{title}".', "success")
+    return redirect(url_for("scrap_detail", scrap_id=scrap_id))
+
+
+@app.route("/scraps/<int:scrap_id>/toggle-private", methods=["POST"])
+@login_required
+def toggle_scrap_private(scrap_id):
+    db = get_db()
+    scrap = db.execute("SELECT is_private FROM scraps WHERE id = ?", (scrap_id,)).fetchone()
+    if scrap is None:
+        abort(404)
+    db.execute(
+        "UPDATE scraps SET is_private = ? WHERE id = ?",
+        (0 if scrap["is_private"] else 1, scrap_id),
+    )
+    db.commit()
+    return redirect(url_for("scrap_detail", scrap_id=scrap_id))
+
+
+@app.route("/scraps/<int:scrap_id>/delete", methods=["POST"])
+@login_required
+def delete_scrap(scrap_id):
+    db = get_db()
+    scrap = db.execute("SELECT title FROM scraps WHERE id = ?", (scrap_id,)).fetchone()
+    if scrap is None:
+        abort(404)
+    db.execute("DELETE FROM scraps WHERE id = ?", (scrap_id,))
+    db.commit()
+    flash(f'Deleted "{scrap["title"]}".', "success")
+    return redirect(url_for("scraps_list"))
+
+
+@app.route("/scraps/preview", methods=["POST"])
+@login_required
+def preview_scrap():
+    body = request.form.get("body_markdown", "")
+    return render_scrap_markdown(body)
 
 
 @app.errorhandler(404)

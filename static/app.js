@@ -502,5 +502,37 @@ document.addEventListener('DOMContentLoaded', () => {
     if (switcher && menu && menu.classList.contains('open') && !switcher.contains(e.target)) {
       menu.classList.remove('open');
     }
+    const quickAdd = document.querySelector('.quick-add-menu');
+    const quickAddMenu = document.getElementById('quickAddMenu');
+    if (quickAdd && quickAddMenu && quickAddMenu.classList.contains('open') && !quickAdd.contains(e.target)) {
+      quickAddMenu.classList.remove('open');
+    }
   });
 });
+
+// Quick-add menu ("+" in the header) — consolidates Add Fragrance / Add
+// Shelf into one dropdown instead of two separate header buttons.
+function toggleQuickAddMenu() {
+  const menu = document.getElementById('quickAddMenu');
+  if (menu) menu.classList.toggle('open');
+}
+
+// Some mobile browsers (notably Firefox Android) can leave a gap under
+// position:fixed bottom elements — the "viewport" used for fixed
+// positioning can lag behind the actual visible area as the address bar
+// collapses/expands during scroll. window.innerHeight reflects the
+// layout viewport (can include space reserved for browser chrome);
+// window.visualViewport reflects what's actually visible right now. The
+// difference between them is exactly the gap that shows up, so we feed
+// it back in as a CSS variable and let the footer/toolbar compensate.
+function syncFooterOffset() {
+  if (!window.visualViewport) return;
+  const gap = window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop;
+  document.documentElement.style.setProperty('--footer-bottom-offset', Math.max(0, Math.round(gap)) + 'px');
+}
+if (window.visualViewport) {
+  syncFooterOffset();
+  window.visualViewport.addEventListener('resize', syncFooterOffset);
+  window.visualViewport.addEventListener('scroll', syncFooterOffset);
+}
+

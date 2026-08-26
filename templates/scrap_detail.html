@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ scrap['title'] }} — Scraps — The Scent Ledger{% endblock %}
+{% block breadcrumbs %}
+  <span class="breadcrumb-sep">/</span><a href="{{ url_for('scraps_list') }}">Scraps</a>
+  <span class="breadcrumb-sep">/</span><span class="breadcrumb-current">{{ scrap['title'] }}</span>
+{% endblock %}
+{% block content %}
+
+<div class="content-narrow">
+  <h1 class="scrap-detail-title">
+    {{ scrap['title'] }}
+    {% if scrap['is_private'] %}<span class="shelf-private-badge" title="Private — hidden from public visitors">🔒</span>{% endif %}
+  </h1>
+  <div class="scrap-detail-meta">
+    Written {{ scrap['created_at_display'] }}{% if scrap['updated_at'] != scrap['created_at'] %} · edited {{ scrap['updated_at_display'] }}{% endif %}
+  </div>
+
+  {% if is_admin %}
+    <div class="detail-actions" style="margin:18px 0 28px;">
+      <a class="btn-ghost" href="{{ url_for('edit_scrap', scrap_id=scrap['id']) }}" style="display:inline-block;">Edit</a>
+      <form method="post" action="{{ url_for('toggle_scrap_private', scrap_id=scrap['id']) }}">
+        <button type="submit" class="btn-ghost">{{ 'Make Public' if scrap['is_private'] else 'Make Private' }}</button>
+      </form>
+      <form action="{{ url_for('delete_scrap', scrap_id=scrap['id']) }}" method="post"
+            onsubmit="return confirm('Delete &quot;{{ scrap['title'] }}&quot;? This can\'t be undone.');">
+        <button type="submit" class="btn-ghost danger">Delete</button>
+      </form>
+    </div>
+  {% endif %}
+
+  {% if scrap['body_markdown'] %}
+    <div class="scrap-body">{{ scrap['body_markdown'] | render_scrap_markdown | safe }}</div>
+  {% else %}
+    <p class="description" style="font-style:italic;color:var(--ink-faint);">Nothing written yet.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

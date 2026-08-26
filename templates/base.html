@@ -49,16 +49,6 @@
       <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
     </svg>
   </a>
-  <a class="random-pick-btn" href="{{ url_for('random_pick') }}" aria-label="What should I wear today?" title="What should I wear today?">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="3" y="3" width="18" height="18" rx="3"></rect>
-      <circle cx="8" cy="8" r="1.3" fill="currentColor" stroke="none"></circle>
-      <circle cx="16" cy="8" r="1.3" fill="currentColor" stroke="none"></circle>
-      <circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"></circle>
-      <circle cx="8" cy="16" r="1.3" fill="currentColor" stroke="none"></circle>
-      <circle cx="16" cy="16" r="1.3" fill="currentColor" stroke="none"></circle>
-    </svg>
-  </a>
   <div class="theme-switcher">
     <button type="button" class="theme-switcher-toggle" onclick="toggleThemeMenu()" aria-label="Change theme" title="Change theme">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -77,24 +67,17 @@
       <button type="button" class="theme-option" data-theme="light" onclick="setTheme('light')"><span class="theme-swatch theme-swatch-light"></span>Light</button>
     </div>
   </div>
-  {% if todays_frag %}
-    <div class="today-frag-slot">
-      <div class="today-frag-thumb">
-        {% if todays_frag['image_filename'] %}
-          <img src="{{ url_for('static', filename='uploads/' + todays_frag['image_filename']) }}" alt="">
-        {% else %}
-          <div class="ph">—</div>
-        {% endif %}
-      </div>
-      <div class="today-frag-text">
-        {{ todays_frag_label }} – <a href="{{ url_for('detail', fragrance_id=todays_frag['id']) }}" class="today-frag-name">{{ todays_frag['name'] }}</a>
-      </div>
-    </div>
-  {% endif %}
   {% if is_admin %}
     <div class="header-admin-actions">
-      <a class="add-btn" href="{{ url_for('add') }}"><span class="add-btn-plus">+</span><span class="add-btn-label">Add Fragrance</span></a>
-      <a class="add-shelf-btn" href="{{ url_for('add_shelf') }}"><span class="add-btn-plus">+</span><span class="add-btn-label">Add Shelf</span></a>
+      <div class="quick-add-menu">
+        <button type="button" class="quick-add-toggle" onclick="toggleQuickAddMenu()" aria-label="Add new" title="Add new">
+          <span class="add-btn-plus">+</span><span class="add-btn-label">Add</span>
+        </button>
+        <div class="quick-add-dropdown" id="quickAddMenu">
+          <a href="{{ url_for('add') }}" class="quick-add-option">+ Add Fragrance</a>
+          <a href="{{ url_for('add_shelf') }}" class="quick-add-option">+ Add Shelf</a>
+        </div>
+      </div>
       <form method="post" action="{{ url_for('logout') }}">
         <button type="submit" class="logout-btn">Logout</button>
       </form>
@@ -133,6 +116,15 @@
         <path d="M3 9h18M3 15h18M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"></path>
       </svg>
       Shelves{% if shelves_count %} ({{ shelves_count }}){% endif %}
+    </a>
+    <a href="{{ url_for('scraps_list') }}" class="sidebar-stats-link {{ 'active' if request.path.startswith('/scraps') else '' }}">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+        <polyline points="14 2 14 8 20 8"></polyline>
+        <line x1="8" y1="13" x2="16" y2="13"></line>
+        <line x1="8" y1="17" x2="13" y2="17"></line>
+      </svg>
+      Scraps{% if scraps_count %} ({{ scraps_count }}){% endif %}
     </a>
     {% if is_admin %}
       <a href="{{ url_for('notes_library') }}" class="sidebar-stats-link {{ 'active' if request.path == '/notes' else '' }}">

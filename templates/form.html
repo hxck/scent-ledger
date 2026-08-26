@@ -38,206 +38,252 @@
   <form method="post" enctype="multipart/form-data" novalidate>
     <input type="hidden" name="image_url" id="importedImageUrl">
     <input type="hidden" name="notes_images_json" id="notesImagesJson">
-    <div class="field-row">
-      <div class="field">
-        <label for="fBrand">Brand / House</label>
-        <input type="text" id="fBrand" name="brand" placeholder="e.g. Maison Francis Kurkdjian" value="{{ fd.get('brand', '') }}">
-      </div>
-      <div class="field">
-        <label for="fName">Fragrance Name</label>
-        <input type="text" id="fName" name="name" placeholder="e.g. Baccarat Rouge 540" value="{{ fd.get('name', '') }}">
-      </div>
-    </div>
 
-    {% if mode == 'add' %}
-      <div class="field">
-        <label>Wishlist</label>
-        <div class="checkbox-row">
-          <label class="pill-check">
-            <input type="checkbox" id="fAddToWishlist" name="is_wishlist" value="1" {{ 'checked' if (prefill_wishlist or fd.get('is_wishlist')) else '' }}>
-            <span>💝 Add to Wishlist instead</span>
-          </label>
-        </div>
-        <div class="field-note">Wishlist items stay off the sidebar, search, and stats until moved into the collection from the Edit page.</div>
-      </div>
-    {% elif mode == 'edit' and fd.get('is_wishlist') %}
-      <div class="field">
-        <label>Wishlist</label>
-        <div class="checkbox-row">
-          <label class="pill-check">
-            <input type="checkbox" id="fOnWishlist" name="is_wishlist" value="1" checked>
-            <span>💝 On Wishlist</span>
-          </label>
-        </div>
-        <div class="field-note">Uncheck and save to move this into your main collection.</div>
-      </div>
-    {% endif %}
-
-    <div class="field">
-      <label for="fSubname">This Fragrance Is a Dupe Of <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
-      <input type="text" id="fSubname" name="subname" placeholder="e.g. Xerjoff Erba Pura" value="{{ fd.get('subname', '') }}">
-      <div class="field-note">Shown under the name, linking to a Fragrantica search for it — handy since you likely don't own the original to link to directly.</div>
-    </div>
-
-    <div class="field">
-      <label for="fFragranticaUrl">Fragrantica URL <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
-      <input type="url" id="fFragranticaUrl" name="fragrantica_url" placeholder="https://www.fragrantica.com/perfume/..." value="{{ fd.get('fragrantica_url') or '' }}">
-      <div class="field-note">Auto-filled by the bookmarklet. Used to detect re-imports of the same fragrance even after you've renamed it here — paste it in manually for older entries to get the same benefit.</div>
-    </div>
-
-    <div class="field-row">
-      <div class="field">
-        <label for="fPrice">Current Price (USD) <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
-        <input type="number" id="fPrice" name="price" step="0.01" min="0" placeholder="e.g. 145.00" value="{{ '' if fd.get('price') is none else fd.get('price') }}">
-        <div class="field-note">What it's listed for now (e.g. from Fragrantica).</div>
-      </div>
-      <div class="field">
-        <label for="fPurchasePrice">What You Paid (USD) <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
-        <input type="number" id="fPurchasePrice" name="purchase_price" step="0.01" min="0" placeholder="e.g. 98.50" value="{{ '' if fd.get('purchase_price') is none else fd.get('purchase_price') }}">
-        <div class="field-note">Your actual purchase price — never auto-filled by import.</div>
-      </div>
-    </div>
-
-    <div class="field">
-      <label>Flags <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
-      <div class="checkbox-row">
-        <label class="pill-check">
-          <input type="checkbox" id="fIsGift" name="is_gift" value="1" {{ 'checked' if fd.get('is_gift') else '' }}>
-          <span>🎁 This was a gift</span>
-        </label>
-        <label class="pill-check">
-          <input type="checkbox" id="fIsDiscontinued" name="is_discontinued" value="1" {{ 'checked' if fd.get('is_discontinued') else '' }}>
-          <span>⭐ Discontinued</span>
-        </label>
-      </div>
-    </div>
-
-    <div class="field">
-      <label>Ownership</label>
-      <div class="checkbox-row">
-        <label class="pill-check">
-          <input type="checkbox" id="fCurrentlyOwned" name="currently_owned" value="1" {{ 'checked' if fd.get('currently_owned', true) else '' }}>
-          <span>Currently Owned</span>
-        </label>
-        <label class="pill-check">
-          <input type="checkbox" id="fGaveAway" name="gave_away" value="1" {{ 'checked' if fd.get('gave_away') else '' }}>
-          <span>Gave Away</span>
-        </label>
-      </div>
-    </div>
-
-    <div class="field">
-      <label for="fBottlesOwned">Bottles Owned <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(lifetime total, including any you no longer have)</span></label>
-      <input type="number" id="fBottlesOwned" name="bottles_owned" min="0" step="1" style="max-width:120px;" value="{{ fd.get('bottles_owned', 1) }}">
-    </div>
-
-    <div class="field">
-      <label>Rating <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
-      <div class="star-rating-picker" id="starRatingPicker">
-        <input type="hidden" name="rating" id="fRating" value="{{ fd.get('rating') or '' }}">
-        {% for i in range(1, 6) %}
-          <button type="button" class="star-btn" data-value="{{ i }}" onclick="setRating({{ i }})">★</button>
-        {% endfor %}
-        <button type="button" class="star-clear-btn" onclick="setRating(0)">Clear</button>
-      </div>
-    </div>
-
-    <div class="field">
-      <label for="fFillLevel">Fill Level <span id="fillLevelDisplay" style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">({{ fd.get('fill_level', 100) }}%)</span></label>
-      <input type="range" id="fFillLevel" name="fill_level" min="0" max="100" step="5"
-             value="{{ fd.get('fill_level', 100) }}"
-             oninput="document.getElementById('fillLevelDisplay').textContent = '(' + this.value + '%)'">
-    </div>
-
-    <div class="field">
-      <label for="fSizeMl">Size (ml) <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional — used to work out cost per wear)</span></label>
-      <input type="number" id="fSizeMl" name="size_ml" min="1" step="1" style="max-width:120px;"
-             placeholder="e.g. 100" value="{{ fd.get('size_ml') or '' }}">
-      <div class="field-note">Cost per wear assumes 10 sprays/ml and 6 sprays per wear (so a 100ml bottle is about 166 wears).</div>
-    </div>
-
-    <div class="field">
-      <label>Bottle Photo</label>
-      <div class="upload-box">
-        <div class="upload-preview {{ 'no-bg' if fd.get('image_filename') and fd['image_filename'].endswith('.png') else '' }}" id="uploadPreview">
-          {% if fd.get('image_filename') %}
-            <img src="{{ url_for('static', filename='uploads/' + fd['image_filename']) }}">
-          {% else %}
-            <div class="ph">NO IMAGE</div>
-          {% endif %}
-        </div>
+    <div class="form-section">
+      <div class="form-section-header">
+        <span class="form-section-number">1</span>
         <div>
-          <input type="file" id="fImage" name="image" accept="image/*">
-          <div class="field-note">JPG, PNG, or WEBP. Will be resized automatically.</div>
+          <div class="form-section-title">Identity</div>
+          <div class="form-section-desc">The basics — brand, name, and the bottle photo.</div>
+        </div>
+      </div>
+      <div class="form-section-body">
+        <div class="field-row">
+          <div class="field">
+            <label for="fBrand">Brand / House</label>
+            <input type="text" id="fBrand" name="brand" placeholder="e.g. Maison Francis Kurkdjian" value="{{ fd.get('brand', '') }}">
+          </div>
+          <div class="field">
+            <label for="fName">Fragrance Name</label>
+            <input type="text" id="fName" name="name" placeholder="e.g. Baccarat Rouge 540" value="{{ fd.get('name', '') }}">
+          </div>
+        </div>
+
+        {% if mode == 'add' %}
+          <div class="field">
+            <label>Wishlist</label>
+            <div class="checkbox-row">
+              <label class="pill-check">
+                <input type="checkbox" id="fAddToWishlist" name="is_wishlist" value="1" {{ 'checked' if (prefill_wishlist or fd.get('is_wishlist')) else '' }}>
+                <span>💝 Add to Wishlist instead</span>
+              </label>
+            </div>
+            <div class="field-note">Wishlist items stay off the sidebar, search, and stats until moved into the collection from the Edit page.</div>
+          </div>
+        {% elif mode == 'edit' and fd.get('is_wishlist') %}
+          <div class="field">
+            <label>Wishlist</label>
+            <div class="checkbox-row">
+              <label class="pill-check">
+                <input type="checkbox" id="fOnWishlist" name="is_wishlist" value="1" checked>
+                <span>💝 On Wishlist</span>
+              </label>
+            </div>
+            <div class="field-note">Uncheck and save to move this into your main collection.</div>
+          </div>
+        {% endif %}
+
+        <div class="field">
+          <label for="fSubname">This Fragrance Is a Dupe Of <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
+          <input type="text" id="fSubname" name="subname" placeholder="e.g. Xerjoff Erba Pura" value="{{ fd.get('subname', '') }}">
+          <div class="field-note">Shown under the name, linking to a Fragrantica search for it — handy since you likely don't own the original to link to directly.</div>
+        </div>
+
+        <div class="field">
+          <label for="fFragranticaUrl">Fragrantica URL <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
+          <input type="url" id="fFragranticaUrl" name="fragrantica_url" placeholder="https://www.fragrantica.com/perfume/..." value="{{ fd.get('fragrantica_url') or '' }}">
+          <div class="field-note">Auto-filled by the bookmarklet. Used to detect re-imports of the same fragrance even after you've renamed it here — paste it in manually for older entries to get the same benefit.</div>
+        </div>
+
+        <div class="field">
+          <label>Bottle Photo</label>
+          <div class="upload-box">
+            <div class="upload-preview {{ 'no-bg' if fd.get('image_filename') and fd['image_filename'].endswith('.png') else '' }}" id="uploadPreview">
+              {% if fd.get('image_filename') %}
+                <img src="{{ url_for('static', filename='uploads/' + fd['image_filename']) }}">
+              {% else %}
+                <div class="ph">NO IMAGE</div>
+              {% endif %}
+            </div>
+            <div>
+              <input type="file" id="fImage" name="image" accept="image/*">
+              <div class="field-note">JPG, PNG, or WEBP. Will be resized automatically.</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="field">
-      <label for="fDescription">Description</label>
-      <textarea id="fDescription" name="description" placeholder="Tasting notes, occasions, how it wears...">{{ fd.get('description', '') }}</textarea>
+    <div class="form-section">
+      <div class="form-section-header">
+        <span class="form-section-number">2</span>
+        <div>
+          <div class="form-section-title">Character</div>
+          <div class="form-section-desc">What it smells like and when you'd reach for it.</div>
+        </div>
+      </div>
+      <div class="form-section-body">
+        <div class="field">
+          <label for="fDescription">Description</label>
+          <textarea id="fDescription" name="description" placeholder="Tasting notes, occasions, how it wears...">{{ fd.get('description', '') }}</textarea>
+        </div>
+
+        <div class="field">
+          <label>Note Breakdown</label>
+          <div class="notes-tiers">
+            <div class="tier-box">
+              <div class="tier-title">Top Notes</div>
+              <div class="chip-input-wrap" id="tierTopChips"></div>
+              <input type="hidden" name="notes_top_csv" id="tierTopHidden">
+              <input type="text" class="chip-text-input" id="tierTopText" placeholder="Type a note, press Enter">
+            </div>
+            <div class="tier-box">
+              <div class="tier-title">Middle Notes</div>
+              <div class="chip-input-wrap" id="tierMiddleChips"></div>
+              <input type="hidden" name="notes_middle_csv" id="tierMiddleHidden">
+              <input type="text" class="chip-text-input" id="tierMiddleText" placeholder="Type a note, press Enter">
+            </div>
+            <div class="tier-box">
+              <div class="tier-title">Base Notes</div>
+              <div class="chip-input-wrap" id="tierBaseChips"></div>
+              <input type="hidden" name="notes_base_csv" id="tierBaseHidden">
+              <input type="text" class="chip-text-input" id="tierBaseText" placeholder="Type a note, press Enter">
+            </div>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label>Season</label>
+            <div class="checkbox-row">
+              {% for s in ['Spring', 'Summer', 'Fall', 'Winter'] %}
+                <label class="pill-check">
+                  <input type="checkbox" name="seasons" value="{{ s }}" {{ 'checked' if s in fd.get('seasons', []) else '' }}>
+                  <span>{{ s }}</span>
+                </label>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="field">
+            <label>Day / Night</label>
+            <div class="radio-row">
+              {% for d in ['Day', 'Night', 'Both'] %}
+                <label class="pill-check">
+                  <input type="radio" name="daynight" value="{{ d }}" {{ 'checked' if fd.get('daynight') == d else '' }}>
+                  <span>{{ d }}</span>
+                </label>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Tags</label>
+          <div class="tier-box">
+            <div class="chip-input-wrap" id="tagsChips"></div>
+            <input type="hidden" name="tags_csv" id="tagsHidden">
+            <input type="text" class="chip-text-input" id="tagsText" placeholder="Type a tag, press Enter (e.g. gourmand, date-night, signature)">
+          </div>
+        </div>
+      </div>
     </div>
 
-    <div class="field">
-      <label for="fPrivateNotes">Private Notes <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(only visible to you, never shown to public visitors)</span></label>
-      <textarea id="fPrivateNotes" name="private_notes" placeholder="Batch differences, where you bought it, anything you don't want on the public description...">{{ fd.get('private_notes', '') }}</textarea>
-    </div>
+    <div class="form-section">
+      <div class="form-section-header">
+        <span class="form-section-number">3</span>
+        <div>
+          <div class="form-section-title">Ownership &amp; Value</div>
+          <div class="form-section-desc">What you have, what it cost, and how much is left.</div>
+        </div>
+      </div>
+      <div class="form-section-body">
+        <div class="field-row">
+          <div class="field">
+            <label for="fPrice">Current Price (USD) <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
+            <input type="number" id="fPrice" name="price" step="0.01" min="0" placeholder="e.g. 145.00" value="{{ '' if fd.get('price') is none else fd.get('price') }}">
+            <div class="field-note">What it's listed for now (e.g. from Fragrantica).</div>
+          </div>
+          <div class="field">
+            <label for="fPurchasePrice">What You Paid (USD) <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
+            <input type="number" id="fPurchasePrice" name="purchase_price" step="0.01" min="0" placeholder="e.g. 98.50" value="{{ '' if fd.get('purchase_price') is none else fd.get('purchase_price') }}">
+            <div class="field-note">Your actual purchase price — never auto-filled by import.</div>
+          </div>
+        </div>
 
-    <div class="field-row">
-      <div class="field">
-        <label>Season</label>
-        <div class="checkbox-row">
-          {% for s in ['Spring', 'Summer', 'Fall', 'Winter'] %}
+        <div class="field">
+          <label>Flags <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
+          <div class="checkbox-row">
             <label class="pill-check">
-              <input type="checkbox" name="seasons" value="{{ s }}" {{ 'checked' if s in fd.get('seasons', []) else '' }}>
-              <span>{{ s }}</span>
+              <input type="checkbox" id="fIsGift" name="is_gift" value="1" {{ 'checked' if fd.get('is_gift') else '' }}>
+              <span>🎁 This was a gift</span>
             </label>
-          {% endfor %}
-        </div>
-      </div>
-      <div class="field">
-        <label>Day / Night</label>
-        <div class="radio-row">
-          {% for d in ['Day', 'Night', 'Both'] %}
             <label class="pill-check">
-              <input type="radio" name="daynight" value="{{ d }}" {{ 'checked' if fd.get('daynight') == d else '' }}>
-              <span>{{ d }}</span>
+              <input type="checkbox" id="fIsDiscontinued" name="is_discontinued" value="1" {{ 'checked' if fd.get('is_discontinued') else '' }}>
+              <span>⭐ Discontinued</span>
             </label>
-          {% endfor %}
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Ownership</label>
+          <div class="checkbox-row">
+            <label class="pill-check">
+              <input type="checkbox" id="fCurrentlyOwned" name="currently_owned" value="1" {{ 'checked' if fd.get('currently_owned', true) else '' }}>
+              <span>Currently Owned</span>
+            </label>
+            <label class="pill-check">
+              <input type="checkbox" id="fGaveAway" name="gave_away" value="1" {{ 'checked' if fd.get('gave_away') else '' }}>
+              <span>Gave Away</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="fBottlesOwned">Bottles Owned <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(lifetime total)</span></label>
+            <input type="number" id="fBottlesOwned" name="bottles_owned" min="0" step="1" value="{{ fd.get('bottles_owned', 1) }}">
+          </div>
+          <div class="field">
+            <label for="fSizeMl">Size (ml) <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
+            <input type="number" id="fSizeMl" name="size_ml" min="1" step="1"
+                   placeholder="e.g. 100" value="{{ fd.get('size_ml') or '' }}">
+          </div>
+        </div>
+        <div class="field-note" style="margin-top:-10px;margin-bottom:18px;">Size is used to work out cost per wear — assumes 10 sprays/ml and 6 sprays per wear, so a 100ml bottle is about 166 wears.</div>
+
+        <div class="field">
+          <label for="fFillLevel">Fill Level <span id="fillLevelDisplay" style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">({{ fd.get('fill_level', 100) }}%)</span></label>
+          <input type="range" id="fFillLevel" name="fill_level" min="0" max="100" step="5"
+                 value="{{ fd.get('fill_level', 100) }}"
+                 oninput="document.getElementById('fillLevelDisplay').textContent = '(' + this.value + '%)'">
         </div>
       </div>
     </div>
 
-    <div class="field">
-      <label>Note Breakdown</label>
-      <div class="notes-tiers">
-        <div class="tier-box">
-          <div class="tier-title">Top Notes</div>
-          <div class="chip-input-wrap" id="tierTopChips"></div>
-          <input type="hidden" name="notes_top_csv" id="tierTopHidden">
-          <input type="text" class="chip-text-input" id="tierTopText" placeholder="Type a note, press Enter">
-        </div>
-        <div class="tier-box">
-          <div class="tier-title">Middle Notes</div>
-          <div class="chip-input-wrap" id="tierMiddleChips"></div>
-          <input type="hidden" name="notes_middle_csv" id="tierMiddleHidden">
-          <input type="text" class="chip-text-input" id="tierMiddleText" placeholder="Type a note, press Enter">
-        </div>
-        <div class="tier-box">
-          <div class="tier-title">Base Notes</div>
-          <div class="chip-input-wrap" id="tierBaseChips"></div>
-          <input type="hidden" name="notes_base_csv" id="tierBaseHidden">
-          <input type="text" class="chip-text-input" id="tierBaseText" placeholder="Type a note, press Enter">
+    <div class="form-section">
+      <div class="form-section-header">
+        <span class="form-section-number">4</span>
+        <div>
+          <div class="form-section-title">Personal</div>
+          <div class="form-section-desc">For your eyes only.</div>
         </div>
       </div>
-    </div>
+      <div class="form-section-body">
+        <div class="field">
+          <label>Rating <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
+          <div class="star-rating-picker" id="starRatingPicker">
+            <input type="hidden" name="rating" id="fRating" value="{{ fd.get('rating') or '' }}">
+            {% for i in range(1, 6) %}
+              <button type="button" class="star-btn" data-value="{{ i }}" onclick="setRating({{ i }})">★</button>
+            {% endfor %}
+            <button type="button" class="star-clear-btn" onclick="setRating(0)">Clear</button>
+          </div>
+        </div>
 
-    <div class="field">
-      <label>Tags</label>
-      <div class="tier-box">
-        <div class="chip-input-wrap" id="tagsChips"></div>
-        <input type="hidden" name="tags_csv" id="tagsHidden">
-        <input type="text" class="chip-text-input" id="tagsText" placeholder="Type a tag, press Enter (e.g. gourmand, date-night, signature)">
+        <div class="field">
+          <label for="fPrivateNotes">Private Notes <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(only visible to you, never shown to public visitors)</span></label>
+          <textarea id="fPrivateNotes" name="private_notes" placeholder="Batch differences, where you bought it, anything you don't want on the public description...">{{ fd.get('private_notes', '') }}</textarea>
+        </div>
       </div>
     </div>
 
