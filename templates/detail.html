@@ -1,6 +1,68 @@
 {% extends "base.html" %}
 {% block title %}{{ f['name'] }} — The Scent Ledger{% endblock %}
 
+{% block og_type %}article{% endblock %}
+{% block og_title %}{{ f['brand'] }} {{ f['name'] }}{% endblock %}
+{% block og_description %}
+{%- if f['description'] -%}
+  {{ f['description'][:200] }}
+{%- elif f['accords'] -%}
+  {{ f['accords'] | map(attribute='name') | join(', ') | title }}
+{%- else -%}
+  {{ f['brand'] }} in The Scent Ledger.
+{%- endif -%}
+{% endblock %}
+{% block og_image %}
+  {%- if f['image_filename'] %}
+  <meta property="og:image" content="{{ url_for('static', filename='uploads/' + f['image_filename'], _external=True) }}">
+  {%- endif %}
+{% endblock %}
+{% block twitter_card %}{{ 'summary_large_image' if f['image_filename'] else 'summary' }}{% endblock %}
+
+{# One definition shared by the "add container" form and every per-container
+   edit form, so the two can never drift apart. `c` is None when adding. #}
+{% macro container_fields(c) %}
+  {% set c = c or {} %}
+  <div class="container-field-grid">
+    <label>
+      <span>Type</span>
+      <select name="container_type">
+        {% for t, label in [('bottle','Bottle'), ('decant','Decant'), ('sample','Sample'), ('travel','Travel Spray')] %}
+          <option value="{{ t }}" {{ 'selected' if c.get('container_type') == t else '' }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      <span>Size (ml)</span>
+      <input type="number" name="size_ml" step="0.1" min="0" placeholder="e.g. 5" value="{{ c.get('size_ml') or '' }}">
+    </label>
+    <label>
+      <span>Fill %</span>
+      <input type="number" name="fill_level" step="1" min="0" max="100" value="{{ c.get('fill_level', 100) }}">
+    </label>
+    <label>
+      <span>Paid</span>
+      <input type="number" name="purchase_price" step="0.01" min="0" placeholder="e.g. 24.00" value="{{ c.get('purchase_price') if c.get('purchase_price') is not none else '' }}">
+    </label>
+    <label>
+      <span>Bought</span>
+      <input type="date" name="purchase_date" value="{{ c.get('purchase_date') or '' }}">
+    </label>
+    <label>
+      <span>Batch code</span>
+      <input type="text" name="batch_code" placeholder="e.g. 3M01" value="{{ c.get('batch_code') or '' }}">
+    </label>
+    <label class="container-field-wide">
+      <span>Label <em>(optional)</em></span>
+      <input type="text" name="label" placeholder="e.g. gym bag decant" value="{{ c.get('label') or '' }}">
+    </label>
+    <label class="container-field-check">
+      <input type="checkbox" name="is_finished" value="1" {{ 'checked' if c.get('is_finished') else '' }}>
+      <span>Finished / used up</span>
+    </label>
+  </div>
+{% endmacro %}
+
 {% block breadcrumbs %}
   {% if f['is_wishlist'] %}
     <span class="breadcrumb-sep">/</span><a href="{{ url_for('wishlist') }}">Wishlist</a>
@@ -21,7 +83,7 @@
       {% endif %}
     </div>
 
-    <div class="detail-zone-label">Your Bottle</div>
+    <div class="detail-zone-label">Your Stash</div>
 
     <div class="ownership-panel">
       <span class="ownership-badge {{ 'owned' if f['currently_owned'] else 'not-owned' }}">
@@ -35,53 +97,83 @@
       {% endif %}
     </div>
 
-    <div class="fill-level-panel">
-      <div class="fill-level-label">Fill Level <span class="fill-level-pct">{{ f['fill_level'] }}%</span></div>
-      <div class="fill-level-track"><div class="fill-level-bar" style="width:{{ f['fill_level'] }}%;"></div></div>
-    </div>
-
-    <div class="wear-panel">
-      <div class="wear-stats">
-        {% if f['wear_count'] %}
-          Worn {{ f['wear_count'] }} time{{ 's' if f['wear_count'] != 1 else '' }} · Last worn {{ f['last_worn_display'] }}
-        {% else %}
-          Never logged as worn
+    <div class="containers-panel">
+      <div class="containers-header">
+        <span class="section-label" style="margin:0;">What You Have</span>
+        {% if is_admin %}
+          <button type="button" class="container-add-toggle" onclick="toggleAddContainer()">+ Add</button>
         {% endif %}
       </div>
-      {% if f['cost_per_wear'] is not none %}
-        <div class="cost-per-wear">${{ '%.2f'|format(f['cost_per_wear']) }} per wear</div>
-      {% endif %}
-      {% if is_admin %}
-        <form method="post" action="{{ url_for('log_wear', fragrance_id=f['id']) }}" style="margin-top:10px;">
-          <button type="submit" class="btn-ghost wear-log-btn">I Wore This Today</button>
-        </form>
-        {% if f['wear_log'] %}
-          <details class="wear-history-details">
-            <summary class="section-label tag-details-summary">Wear History ({{ f['wear_count'] }})</summary>
-            <div class="wear-history-list">
-              {% for entry in f['wear_log'] %}
-                <div class="wear-history-row">
-                  <span>{{ entry['worn_at_display'] }}</span>
-                  <form method="post" action="{{ url_for('delete_wear_entry', entry_id=entry['id']) }}"
-                        onsubmit="return confirm('Remove this wear log entry?');">
-                    <button type="submit" class="wear-history-delete" title="Remove entry">×</button>
-                  </form>
-                </div>
-              {% endfor %}
+
+      {% for c in f['containers'] %}
+        <div class="container-row {{ 'finished' if c['is_finished'] else '' }}">
+          <div class="container-row-head">
+            <span class="container-type-badge type-{{ c['container_type'] }}">{{ c['type_label'] }}</span>
+            {% if c['size_ml'] %}<span class="container-size">{{ c['size_ml'] | trim_decimal }}ml</span>{% endif %}
+            {% if c['label'] %}<span class="container-label">{{ c['label'] }}</span>{% endif %}
+            {% if c['is_finished'] %}<span class="container-finished-tag">finished</span>{% endif %}
+          </div>
+
+          {% if not c['is_finished'] %}
+            <div class="fill-level-track"><div class="fill-level-bar" style="width:{{ c['fill_level'] }}%;"></div></div>
+            <div class="container-meta">
+              {{ c['fill_level'] }}%
+              {% if c['ml_remaining'] %} · {{ c['ml_remaining'] | trim_decimal }}ml left{% endif %}
+              {% if c['wears_remaining'] %} · ~{{ c['wears_remaining'] }} wears{% endif %}
             </div>
-          </details>
-        {% endif %}
+          {% endif %}
+
+          <div class="container-meta">
+            {% if c['purchase_price'] is not none %}${{ '%.2f'|format(c['purchase_price']) }}{% endif %}
+            {% if c['cost_per_wear'] %} · ${{ '%.2f'|format(c['cost_per_wear']) }}/wear{% endif %}
+            {% if c['purchase_date'] %} · bought {{ c['purchase_date'] }}{% endif %}
+          </div>
+          {% if c['batch_code'] %}<div class="container-batch">batch {{ c['batch_code'] }}</div>{% endif %}
+
+          {% if is_admin %}
+            <details class="container-edit">
+              <summary>edit</summary>
+              <form method="post" action="{{ url_for('edit_container', container_id=c['id']) }}" class="container-form">
+                {{ container_fields(c) }}
+                <div class="container-form-actions">
+                  <button type="submit" class="btn-ghost">Save</button>
+                </div>
+              </form>
+              <form method="post" action="{{ url_for('delete_container', container_id=c['id']) }}"
+                    onsubmit="return confirm('Remove this container? Wear history is kept.');">
+                <button type="submit" class="btn-ghost danger container-delete">Remove container</button>
+              </form>
+            </details>
+          {% endif %}
+        </div>
+      {% else %}
+        <div class="containers-empty">
+          {% if is_admin %}No bottle, decant, or sample recorded yet.{% else %}Nothing recorded.{% endif %}
+        </div>
+      {% endfor %}
+
+      {% if f['economics']['ml_remaining'] and f['economics']['container_count'] > 1 %}
+        <div class="containers-total">
+          {{ f['economics']['ml_remaining'] | trim_decimal }}ml left across {{ f['economics']['live_container_count'] }} containers
+        </div>
+      {% endif %}
+
+      {% if is_admin %}
+        <div class="container-add-panel" id="addContainerPanel">
+          <form method="post" action="{{ url_for('add_container', fragrance_id=f['id']) }}" class="container-form">
+            {{ container_fields(None) }}
+            <div class="container-form-actions">
+              <button type="submit" class="btn-ghost">Add Container</button>
+            </div>
+          </form>
+        </div>
       {% endif %}
     </div>
 
-    {% if is_admin and f['private_notes'] %}
-      <div class="private-notes-panel">
-        <div class="section-label private-notes-label">🔒 Private Notes <span class="private-notes-hint">(only you can see this)</span></div>
-        <p class="description private-notes">{{ f['private_notes'] }}</p>
-      </div>
-    {% endif %}
 
-    {% if f['price'] is not none or f['purchase_price'] is not none or f['is_gift'] %}
+
+    {% set spent = f['economics']['total_spent'] %}
+    {% if f['price'] is not none or spent is not none or f['is_gift'] %}
       <div class="price-panel">
         {% if f['price'] is not none %}
           <div class="price-row">
@@ -94,21 +186,26 @@
             <span class="price-row-label">You Paid</span>
             <span class="price-row-value price-row-gift">🎁 Gift</span>
           </div>
-        {% elif f['purchase_price'] is not none %}
+        {% elif spent is not none %}
           <div class="price-row">
-            <span class="price-row-label">You Paid</span>
-            <span class="price-row-value">${{ '%.2f'|format(f['purchase_price']) }}</span>
+            <span class="price-row-label">
+              {{ 'Total Invested' if f['economics']['container_count'] > 1 else 'You Paid' }}
+            </span>
+            <span class="price-row-value">${{ '%.2f'|format(spent) }}</span>
           </div>
         {% endif %}
-        {% if f['price'] is not none and f['purchase_price'] is not none and not f['is_gift'] %}
-          {% set diff = f['price'] - f['purchase_price'] %}
-          {% set pct = (diff / f['purchase_price'] * 100) if f['purchase_price'] else 0 %}
+        {# Only a like-for-like comparison when there's exactly one container:
+           against several, "current price" is for one bottle while "spent"
+           spans a bottle plus decants, and the difference would be nonsense. #}
+        {% if f['price'] is not none and spent is not none and not f['is_gift'] and f['economics']['container_count'] == 1 %}
+          {% set diff = f['price'] - spent %}
+          {% set pct = (diff / spent * 100) if spent else 0 %}
           {% set sign = '+' if diff > 0 else ('-' if diff < 0 else '') %}
           <div class="price-diff {{ 'price-diff-up' if diff > 0 else ('price-diff-down' if diff < 0 else 'price-diff-flat') }}">
             {{ sign }}${{ '%.2f'|format(diff|abs) }}
             <span class="price-diff-pct">({{ sign }}{{ '%.1f'|format(pct|abs) }}%)</span>
           </div>
-        {% elif f['price'] is not none and f['purchase_price'] is none and not f['is_gift'] %}
+        {% elif f['price'] is not none and spent is none and not f['is_gift'] %}
           <div class="price-panel-note">Reference price from Fragrantica — actual cost varies.</div>
         {% endif %}
       </div>
@@ -172,6 +269,37 @@
       <div class="section-label">Description</div>
       <p class="description">{{ f['description'] }}</p>
     {% endif %}
+
+    {% if f['accords'] %}
+      <div class="section-label">Main Accords</div>
+      <div class="accord-list">
+        {% for a in f['accords'] %}
+          <div class="accord-row">
+            <span class="accord-name">{{ a['name'] }}</span>
+            <div class="accord-track">
+              <div class="accord-fill" style="width:{{ a['strength'] if a['strength'] else 60 }}%;"></div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if f['longevity_rating'] or f['sillage_rating'] or f['projection_rating'] %}
+      <div class="section-label">Performance <span class="section-label-note">(your read)</span></div>
+      <div class="perf-grid">
+        {% for label, val in [('Longevity', f['longevity_rating']), ('Sillage', f['sillage_rating']), ('Projection', f['projection_rating'])] %}
+          {% if val %}
+            <div class="perf-row">
+              <span class="perf-label">{{ label }}</span>
+              <div class="perf-dots">
+                {% for i in range(1, 6) %}<span class="perf-dot {{ 'filled' if i <= val else '' }}"></span>{% endfor %}
+              </div>
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% endif %}
+
 
     <div class="section-label">Note Breakdown</div>
     <div class="pyramid">
@@ -241,10 +369,108 @@
       </div>
     {% endif %}
   </div>
-</div>
+  <div class="detail-side-col">
+    <div class="detail-zone-label">Wearing It</div>
+    <div class="wear-panel">
+      <div class="wear-stats">
+        {% if f['wear_count'] %}
+          Worn {{ f['wear_count'] }} time{{ 's' if f['wear_count'] != 1 else '' }} · Last worn {{ f['last_worn_display'] }}
+        {% else %}
+          Never logged as worn
+        {% endif %}
+      </div>
+      {% if f['cost_per_wear'] is not none %}
+        <div class="cost-per-wear">${{ '%.2f'|format(f['cost_per_wear']) }} per wear</div>
+      {% endif %}
+      {% if f['runout_text'] %}
+        <div class="runout-note">At this rate, runs out in {{ f['runout_text'] }}</div>
+      {% endif %}
+      {% if is_admin %}
+        {# One form, two levels of effort: hit the button and you've logged a
+           bare wear exactly as before; open "add details" first and the same
+           submit carries the context along. #}
+        <form method="post" action="{{ url_for('log_wear', fragrance_id=f['id']) }}" style="margin-top:10px;">
+          <button type="submit" class="btn-ghost wear-log-btn">I Wore This Today</button>
+          <details class="wear-context">
+            <summary>add details</summary>
+            <div class="wear-context-grid">
+              {% if f['containers'] %}
+                <label class="wear-context-wide">
+                  <span>From which</span>
+                  <select name="container_id">
+                    <option value="">— not specified —</option>
+                    {% for c in f['containers'] if not c['is_finished'] %}
+                      <option value="{{ c['id'] }}">
+                        {{ c['type_label'] }}{% if c['size_ml'] %} {{ c['size_ml'] | trim_decimal }}ml{% endif %}{% if c['label'] %} ({{ c['label'] }}){% endif %} — {{ c['fill_level'] }}% full
+                      </option>
+                    {% endfor %}
+                  </select>
+                </label>
+              {% endif %}
+              <label>
+                <span>Occasion</span>
+                <select name="occasion">
+                  <option value="">—</option>
+                  {% for o in ['Work', 'Casual', 'Date', 'Formal', 'Gym', 'Travel', 'Home'] %}
+                    <option value="{{ o }}">{{ o }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                <span>Sprays</span>
+                <input type="number" name="sprays" min="1" max="30" placeholder="6">
+              </label>
+              <label>
+                <span>Temp °F</span>
+                <input type="number" name="weather_temp_f" step="1" placeholder="72">
+              </label>
+              <label>
+                <span>Weather</span>
+                <input type="text" name="weather_summary" placeholder="humid">
+              </label>
+              <label>
+                <span>Lasted (hrs)</span>
+                <input type="number" name="longevity_hours" step="0.5" min="0" placeholder="8">
+              </label>
+              <label class="wear-context-check">
+                <input type="checkbox" name="complimented" value="1">
+                <span>Got a compliment</span>
+              </label>
+              <label class="wear-context-wide">
+                <span>Note</span>
+                <input type="text" name="wear_note" placeholder="anything worth remembering">
+              </label>
+            </div>
+          </details>
+        </form>
+        {% if f['wear_log'] %}
+          <details class="wear-history-details">
+            <summary class="section-label tag-details-summary">Wear History ({{ f['wear_count'] }})</summary>
+            <div class="wear-history-list">
+              {% for entry in f['wear_log'] %}
+                <div class="wear-history-row">
+                  <span>{{ entry['worn_at_display'] }}</span>
+                  <form method="post" action="{{ url_for('delete_wear_entry', entry_id=entry['id']) }}"
+                        onsubmit="return confirm('Remove this wear log entry?');">
+                    <button type="submit" class="wear-history-delete" title="Remove entry">×</button>
+                  </form>
+                </div>
+              {% endfor %}
+            </div>
+          </details>
+        {% endif %}
+      {% endif %}
+    </div>
+
+    {% if is_admin and f['private_notes'] %}
+      <div class="private-notes-panel">
+        <div class="section-label private-notes-label">🔒 Private Notes <span class="private-notes-hint">(only you can see this)</span></div>
+        <p class="description private-notes">{{ f['private_notes'] }}</p>
+      </div>
+    {% endif %}
+
 
 {% if similar_fragrances %}
-  <div class="content-centered">
     <div class="section-label" style="margin-top:8px;">Similar in Your Collection</div>
     <div class="similar-list">
       {% for s in similar_fragrances %}
@@ -264,7 +490,8 @@
         </a>
       {% endfor %}
     </div>
-  </div>
 {% endif %}
+  </div>
+</div>
 
 {% endblock %}

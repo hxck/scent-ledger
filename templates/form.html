@@ -178,6 +178,16 @@
         </div>
 
         <div class="field">
+          <label>Main Accords <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
+          <div class="tier-box">
+            <div class="chip-input-wrap" id="accordsChips"></div>
+            <input type="hidden" name="accords_csv" id="accordsHidden">
+            <input type="text" class="chip-text-input" id="accordsText" placeholder="Type an accord, press Enter (e.g. sweet, woody, fresh spicy)">
+          </div>
+          <div class="field-note">The overall character the blend reads as, ranked most prominent first — distinct from the individual notes above and from your own tags below. Add a strength with a colon to draw the bars proportionally: <code>sweet:92</code>.</div>
+        </div>
+
+        <div class="field">
           <label>Tags</label>
           <div class="tier-box">
             <div class="chip-input-wrap" id="tagsChips"></div>
@@ -203,11 +213,13 @@
             <input type="number" id="fPrice" name="price" step="0.01" min="0" placeholder="e.g. 145.00" value="{{ '' if fd.get('price') is none else fd.get('price') }}">
             <div class="field-note">What it's listed for now (e.g. from Fragrantica).</div>
           </div>
-          <div class="field">
-            <label for="fPurchasePrice">What You Paid (USD) <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
-            <input type="number" id="fPurchasePrice" name="purchase_price" step="0.01" min="0" placeholder="e.g. 98.50" value="{{ '' if fd.get('purchase_price') is none else fd.get('purchase_price') }}">
-            <div class="field-note">Your actual purchase price — never auto-filled by import.</div>
-          </div>
+          {% if mode == 'add' %}
+            <div class="field">
+              <label for="fPurchasePrice">What You Paid (USD) <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
+              <input type="number" id="fPurchasePrice" name="purchase_price" step="0.01" min="0" placeholder="e.g. 98.50" value="">
+              <div class="field-note">What you paid for this first bottle — never auto-filled by import.</div>
+            </div>
+          {% endif %}
         </div>
 
         <div class="field">
@@ -243,20 +255,34 @@
             <label for="fBottlesOwned">Bottles Owned <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(lifetime total)</span></label>
             <input type="number" id="fBottlesOwned" name="bottles_owned" min="0" step="1" value="{{ fd.get('bottles_owned', 1) }}">
           </div>
-          <div class="field">
-            <label for="fSizeMl">Size (ml) <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
-            <input type="number" id="fSizeMl" name="size_ml" min="1" step="1"
-                   placeholder="e.g. 100" value="{{ fd.get('size_ml') or '' }}">
-          </div>
+          {% if mode == 'add' %}
+            <div class="field">
+              <label for="fSizeMl">Size (ml) <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional)</span></label>
+              <input type="number" id="fSizeMl" name="size_ml" min="0" step="0.1"
+                     placeholder="e.g. 100" value="">
+            </div>
+          {% endif %}
         </div>
-        <div class="field-note" style="margin-top:-10px;margin-bottom:18px;">Size is used to work out cost per wear — assumes 10 sprays/ml and 6 sprays per wear, so a 100ml bottle is about 166 wears.</div>
 
-        <div class="field">
-          <label for="fFillLevel">Fill Level <span id="fillLevelDisplay" style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">({{ fd.get('fill_level', 100) }}%)</span></label>
-          <input type="range" id="fFillLevel" name="fill_level" min="0" max="100" step="5"
-                 value="{{ fd.get('fill_level', 100) }}"
-                 oninput="document.getElementById('fillLevelDisplay').textContent = '(' + this.value + '%)'">
-        </div>
+        {% if mode == 'add' %}
+          <div class="field-note" style="margin-top:-10px;margin-bottom:18px;">Size and price describe the bottle you're adding — they become its first container. Cost per wear assumes 10 sprays/ml and 6 sprays per wear, so a 100ml bottle is about 166 wears.</div>
+
+          <div class="field">
+            <label for="fFillLevel">Fill Level <span id="fillLevelDisplay" style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(100%)</span></label>
+            <input type="range" id="fFillLevel" name="fill_level" min="0" max="100" step="5" value="100"
+                   oninput="document.getElementById('fillLevelDisplay').textContent = '(' + this.value + '%)'">
+          </div>
+        {% else %}
+          <div class="field">
+            <label>Bottles, Decants &amp; Samples</label>
+            <div class="field-note">
+              Size, fill level, price paid, purchase date, and batch code live on each
+              individual container now. Manage them under <strong>Your Stash</strong> on
+              <a href="{{ url_for('detail', fragrance_id=fd['id']) }}">this fragrance's page</a>,
+              where you can also add a second bottle or a decant without overwriting the first.
+            </div>
+          </div>
+        {% endif %}
       </div>
     </div>
 
@@ -277,6 +303,23 @@
               <button type="button" class="star-btn" data-value="{{ i }}" onclick="setRating({{ i }})">★</button>
             {% endfor %}
             <button type="button" class="star-clear-btn" onclick="setRating(0)">Clear</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Performance <span style="text-transform:none;letter-spacing:0;color:var(--ink-faint);">(optional — your own read, separate from how much you like it)</span></label>
+          <div class="perf-picker-row">
+            {% for field, label in [('longevity_rating','Longevity'), ('sillage_rating','Sillage'), ('projection_rating','Projection')] %}
+              <label class="perf-picker">
+                <span>{{ label }}</span>
+                <select name="{{ field }}">
+                  <option value="">—</option>
+                  {% for i in range(1, 6) %}
+                    <option value="{{ i }}" {{ 'selected' if fd.get(field) == i else '' }}>{{ i }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+            {% endfor %}
           </div>
         </div>
 
@@ -313,6 +356,9 @@
   const giftCheckbox = document.getElementById('fIsGift');
   const purchasePriceInput = document.getElementById('fPurchasePrice');
   function syncGiftState() {
+    // The paid field only exists in add mode — in edit mode price lives on
+    // the individual containers instead, so there's nothing here to disable.
+    if (!purchasePriceInput) return;
     purchasePriceInput.disabled = giftCheckbox.checked;
     if (giftCheckbox.checked) purchasePriceInput.value = '';
   }
@@ -352,7 +398,8 @@
   const chipMiddle = initChipField('tierMiddleHidden', 'tierMiddleChips', 'tierMiddleText', {{ (notes.get('middle', []) | note_texts) | tojson }});
   const chipBase = initChipField('tierBaseHidden', 'tierBaseChips', 'tierBaseText', {{ (notes.get('base', []) | note_texts) | tojson }});
   const chipTags = initChipField('tagsHidden', 'tagsChips', 'tagsText', {{ fd.get('tags', []) | tojson }});
+  const chipAccords = initChipField('accordsHidden', 'accordsChips', 'accordsText', {{ fd.get('accords', []) | accord_chips | tojson }});
 
-  initFragranticaImport('{{ mode }}', { top: chipTop, middle: chipMiddle, base: chipBase, tags: chipTags });
+  initFragranticaImport('{{ mode }}', { top: chipTop, middle: chipMiddle, base: chipBase, tags: chipTags, accords: chipAccords });
 </script>
 {% endblock %}

@@ -122,34 +122,49 @@
     return result;
   }, { top: [], middle: [], base: [] });
 
-  var tags = safe(function () {
+  // Main accords, with the bar width kept as a strength. These are a distinct
+  // concept from notes (individual ingredients) and from your own tags, so
+  // they're extracted into their own field rather than flattened into tags.
+  var accords = safe(function () {
     var out = [];
+    var seen = {};
 
     // Primary signal: Fragrantica renders main accords as divs with an inline
     // style carrying both a background color and a width:NN% (the bar length),
     // with the accord name in a nested <span>. No stable class name to rely on.
+    // That width is the accord's prominence, so it's worth keeping.
     var styled = Array.prototype.slice.call(document.querySelectorAll('div[style*="width"]'));
     styled.forEach(function (el) {
       var style = el.getAttribute('style') || '';
-      if (!/width\s*:\s*[\d.]+%/i.test(style)) return;
+      var widthMatch = style.match(/width\s*:\s*([\d.]+)%/i);
+      if (!widthMatch) return;
       if (!/background/i.test(style)) return;
       var span = el.querySelector('span');
       var t = text(span || el).replace(/[0-9]+(\.[0-9]+)?\s*%/g, '').trim().toLowerCase();
-      if (t && t.length > 1 && t.length < 30 && out.indexOf(t) === -1) out.push(t);
+      if (!t || t.length < 2 || t.length >= 30 || seen[t]) return;
+      seen[t] = true;
+      out.push({ name: t, strength: Math.round(parseFloat(widthMatch[1])) });
     });
 
     // Fallback: any element whose class name mentions "accord", in case the
     // inline-style pattern above doesn't match (older markup, A/B test, etc.).
+    // No width available on this path, so strength is left null.
     if (!out.length) {
       var byClass = Array.prototype.slice.call(document.querySelectorAll('[class*="accord" i]'));
       byClass.forEach(function (el) {
         var t = text(el).replace(/[0-9]+(\.[0-9]+)?\s*%/g, '').trim().toLowerCase();
-        if (t && t.length > 1 && t.length < 30 && out.indexOf(t) === -1) out.push(t);
+        if (!t || t.length < 2 || t.length >= 30 || seen[t]) return;
+        seen[t] = true;
+        out.push({ name: t, strength: null });
       });
     }
 
     return out.slice(0, 8);
   }, []);
+
+  // Kept for backwards compatibility with the import banner's "accord tags"
+  // wording — the same names, minus strengths.
+  var tags = accords.map(function (a) { return a.name; });
 
   var noteImages = safe(function () {
     // Fragrantica's note icons carry alt="<Note Name>" that matches the note's
@@ -242,6 +257,7 @@
     notes: notes,
     noteImages: noteImages,
     tags: tags,
+    accords: accords,
     price: price,
     whenToWear: whenToWear,
     imageUrl: imageUrl,

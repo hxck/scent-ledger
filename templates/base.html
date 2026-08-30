@@ -12,6 +12,18 @@
   })();
 </script>
 <title>{% block title %}The Scent Ledger{% endblock %}</title>
+
+{# Link previews for when a page gets shared. Individual pages override the
+   inner blocks; everything falls back to a sensible site-wide default. #}
+<meta property="og:site_name" content="The Scent Ledger">
+<meta property="og:type" content="{% block og_type %}website{% endblock %}">
+<meta property="og:url" content="{{ request.url }}">
+<meta property="og:title" content="{% block og_title %}The Scent Ledger{% endblock %}">
+<meta property="og:description" content="{% block og_description %}A personal fragrance collection catalog.{% endblock %}">
+{% block og_image %}{% endblock %}
+<meta name="twitter:card" content="{% block twitter_card %}summary{% endblock %}">
+<meta name="description" content="{{ self.og_description() }}">
+
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
 </head>

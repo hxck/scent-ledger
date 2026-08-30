@@ -9,7 +9,6 @@ CREATE TABLE IF NOT EXISTS fragrances (
     description     TEXT,
     daynight        TEXT,
     price           REAL,
-    purchase_price  REAL,
     is_gift         INTEGER NOT NULL DEFAULT 0,
     is_discontinued INTEGER NOT NULL DEFAULT 0,
     is_wishlist     INTEGER NOT NULL DEFAULT 0,
@@ -18,9 +17,13 @@ CREATE TABLE IF NOT EXISTS fragrances (
     bottles_owned   INTEGER NOT NULL DEFAULT 1,
     fragrantica_url TEXT,
     rating          INTEGER,
-    fill_level      INTEGER NOT NULL DEFAULT 100,
-    size_ml         INTEGER,
     private_notes   TEXT,
+    -- Your own 1-5 read on the three attributes every fragrance discussion
+    -- turns on. Deliberately separate from `rating` (how much you like it):
+    -- a scent can be a 5/5 favourite that projects like a 2.
+    longevity_rating   INTEGER,
+    sillage_rating     INTEGER,
+    projection_rating  INTEGER,
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -36,6 +39,24 @@ CREATE TABLE IF NOT EXISTS notes (
     tier            TEXT NOT NULL CHECK (tier IN ('top', 'middle', 'base')),
     note_text       TEXT NOT NULL,
     position        INTEGER NOT NULL DEFAULT 0
+);
+
+-- Accords are not notes and not tags. A note is an ingredient (bergamot,
+-- oud). An accord is the overall character the blend reads as (fresh,
+-- woody, sweet) and carries a strength. Fragrantica shows them as ranked
+-- bars; folding them into free-form tags loses both the ranking and the
+-- distinction, which is why they get their own table.
+CREATE TABLE IF NOT EXISTS accords (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS fragrance_accords (
+    fragrance_id    INTEGER NOT NULL REFERENCES fragrances(id) ON DELETE CASCADE,
+    accord_id       INTEGER NOT NULL REFERENCES accords(id) ON DELETE CASCADE,
+    strength        REAL,
+    position        INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (fragrance_id, accord_id)
 );
 
 CREATE TABLE IF NOT EXISTS tags (
@@ -77,10 +98,26 @@ CREATE TABLE IF NOT EXISTS shelf_fragrances (
 
 -- One row per "I wore this today" click — a log, not a single field, since
 -- the point is tracking frequency and recency over time.
+-- Every column past worn_at is optional context. Logging a wear stays a
+-- one-click action; the extras are there when you feel like recording them.
+-- This is the one dataset a public fragrance database can't give you — it's
+-- what *you* actually reached for, in what conditions, and how it performed
+-- on your skin rather than on the average commenter's.
+--
+-- container_id is nullable and ON DELETE SET NULL: retiring a finished
+-- decant shouldn't erase the history of having worn it.
 CREATE TABLE IF NOT EXISTS wear_log (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    fragrance_id    INTEGER NOT NULL REFERENCES fragrances(id) ON DELETE CASCADE,
-    worn_at         TEXT NOT NULL DEFAULT (datetime('now'))
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    fragrance_id        INTEGER NOT NULL REFERENCES fragrances(id) ON DELETE CASCADE,
+    container_id        INTEGER REFERENCES containers(id) ON DELETE SET NULL,
+    worn_at             TEXT NOT NULL DEFAULT (datetime('now')),
+    occasion            TEXT,
+    weather_temp_f      REAL,
+    weather_summary     TEXT,
+    sprays              INTEGER,
+    longevity_hours     REAL,
+    complimented        INTEGER NOT NULL DEFAULT 0,
+    wear_note           TEXT
 );
 
 -- Small generic key-value store for app-level settings that come from
@@ -90,6 +127,28 @@ CREATE TABLE IF NOT EXISTS wear_log (
 CREATE TABLE IF NOT EXISTS app_settings (
     key             TEXT PRIMARY KEY,
     value           TEXT NOT NULL
+);
+
+-- One fragrance can be held in several physical containers at once: a full
+-- bottle, a 5ml decant for travel, a 1.5ml sample you're still deciding on,
+-- a sealed backup. Size/fill/price/batch all belong to the *container*, not
+-- the fragrance — a $8 2ml sample and a $325 70ml bottle of the same juice
+-- have completely different per-wear economics.
+--
+-- size_ml is REAL, not INTEGER: samples are routinely 0.7ml or 1.5ml.
+CREATE TABLE IF NOT EXISTS containers (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    fragrance_id    INTEGER NOT NULL REFERENCES fragrances(id) ON DELETE CASCADE,
+    container_type  TEXT NOT NULL DEFAULT 'bottle'
+                    CHECK (container_type IN ('bottle', 'decant', 'sample', 'travel')),
+    size_ml         REAL,
+    fill_level      INTEGER NOT NULL DEFAULT 100,
+    purchase_price  REAL,
+    purchase_date   TEXT,
+    batch_code      TEXT,
+    is_finished     INTEGER NOT NULL DEFAULT 0,
+    label           TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Free-form personal notes ("Scraps") — future purchases, brainstorming,
@@ -111,4 +170,11 @@ CREATE INDEX IF NOT EXISTS idx_fragrance_tags_tag ON fragrance_tags(tag_id);
 CREATE INDEX IF NOT EXISTS idx_shelf_fragrances_shelf ON shelf_fragrances(shelf_id);
 CREATE INDEX IF NOT EXISTS idx_shelf_fragrances_fragrance ON shelf_fragrances(fragrance_id);
 CREATE INDEX IF NOT EXISTS idx_wear_log_fragrance ON wear_log(fragrance_id);
+-- NB: the index on wear_log(container_id) is created in _run_migrations(),
+-- not here. On an existing database that column is added by an ALTER that
+-- runs *after* this script, so indexing it here fails on every upgrade.
+CREATE INDEX IF NOT EXISTS idx_wear_log_worn_at ON wear_log(worn_at);
+CREATE INDEX IF NOT EXISTS idx_containers_fragrance ON containers(fragrance_id);
+CREATE INDEX IF NOT EXISTS idx_fragrance_accords_fragrance ON fragrance_accords(fragrance_id);
+CREATE INDEX IF NOT EXISTS idx_fragrance_accords_accord ON fragrance_accords(accord_id);
 CREATE INDEX IF NOT EXISTS idx_scraps_created_at ON scraps(created_at);

@@ -119,8 +119,6 @@ def _run_migrations(conn):
     existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(fragrances)").fetchall()}
     if "price" not in existing_cols:
         conn.execute("ALTER TABLE fragrances ADD COLUMN price REAL")
-    if "purchase_price" not in existing_cols:
-        conn.execute("ALTER TABLE fragrances ADD COLUMN purchase_price REAL")
     if "is_gift" not in existing_cols:
         conn.execute("ALTER TABLE fragrances ADD COLUMN is_gift INTEGER NOT NULL DEFAULT 0")
     if "is_discontinued" not in existing_cols:
@@ -144,16 +142,141 @@ def _run_migrations(conn):
 
     if "rating" not in existing_cols:
         conn.execute("ALTER TABLE fragrances ADD COLUMN rating INTEGER")
-    if "fill_level" not in existing_cols:
-        conn.execute("ALTER TABLE fragrances ADD COLUMN fill_level INTEGER NOT NULL DEFAULT 100")
     if "private_notes" not in existing_cols:
         conn.execute("ALTER TABLE fragrances ADD COLUMN private_notes TEXT")
-    if "size_ml" not in existing_cols:
-        conn.execute("ALTER TABLE fragrances ADD COLUMN size_ml INTEGER")
+
+    if "longevity_rating" not in existing_cols:
+        conn.execute("ALTER TABLE fragrances ADD COLUMN longevity_rating INTEGER")
+    if "sillage_rating" not in existing_cols:
+        conn.execute("ALTER TABLE fragrances ADD COLUMN sillage_rating INTEGER")
+    if "projection_rating" not in existing_cols:
+        conn.execute("ALTER TABLE fragrances ADD COLUMN projection_rating INTEGER")
 
     scraps_cols = {row[1] for row in conn.execute("PRAGMA table_info(scraps)").fetchall()}
     if "is_private" not in scraps_cols:
         conn.execute("ALTER TABLE scraps ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0")
+
+    # Rich wear-log context. All nullable — logging a wear stays one click.
+    wear_cols = {row[1] for row in conn.execute("PRAGMA table_info(wear_log)").fetchall()}
+    for col, ddl in [
+        ("container_id", "INTEGER REFERENCES containers(id) ON DELETE SET NULL"),
+        ("occasion", "TEXT"),
+        ("weather_temp_f", "REAL"),
+        ("weather_summary", "TEXT"),
+        ("sprays", "INTEGER"),
+        ("longevity_hours", "REAL"),
+        ("complimented", "INTEGER NOT NULL DEFAULT 0"),
+        ("wear_note", "TEXT"),
+    ]:
+        if col not in wear_cols:
+            conn.execute(f"ALTER TABLE wear_log ADD COLUMN {col} {ddl}")
+
+    # Deliberately here rather than in schema.sql: on an upgrade the column
+    # above doesn't exist until the ALTER has run, and schema.sql executes
+    # before any of this.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_wear_log_container ON wear_log(container_id)")
+
+    _backfill_containers(conn)
+    _drop_legacy_fragrance_columns(conn)
+
+
+def _backfill_containers(conn):
+    """Give every pre-containers fragrance a single 'bottle' container that
+    carries over whatever size/fill/price it already had, so existing
+    collections keep their cost-per-wear and fill-level data instead of
+    silently resetting.
+
+    Idempotent by construction: it only touches fragrances that have no
+    container yet, so re-running it (every startup) is a no-op, and a
+    fragrance you deliberately emptied of containers won't get one
+    resurrected on the next boot... except that's exactly the case the
+    NOT EXISTS clause can't distinguish, which is why the whole backfill
+    is additionally gated behind a one-time settings flag below.
+    """
+    already_done = conn.execute(
+        "SELECT value FROM app_settings WHERE key = 'containers_backfilled'"
+    ).fetchone()
+    if already_done:
+        return
+
+    # On a fresh install these columns never existed — schema.sql stopped
+    # creating them once containers became the source of truth. There's
+    # nothing to carry over, so just mark the backfill done.
+    legacy = {"size_ml", "fill_level", "purchase_price"}
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(fragrances)").fetchall()}
+    if not legacy.issubset(cols):
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES ('containers_backfilled', '1') "
+            "ON CONFLICT(key) DO UPDATE SET value = '1'"
+        )
+        return
+
+    conn.execute(
+        """
+        INSERT INTO containers (fragrance_id, container_type, size_ml, fill_level, purchase_price)
+        SELECT f.id, 'bottle', f.size_ml, f.fill_level, f.purchase_price
+        FROM fragrances f
+        WHERE f.is_wishlist = 0
+          AND NOT EXISTS (SELECT 1 FROM containers c WHERE c.fragrance_id = f.id)
+        """
+    )
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES ('containers_backfilled', '1') "
+        "ON CONFLICT(key) DO UPDATE SET value = '1'"
+    )
+
+
+def _drop_legacy_fragrance_columns(conn):
+    """Retire fragrances.size_ml / fill_level / purchase_price.
+
+    These were deliberately left in place through the containers migration
+    so it could be rolled back. Containers has been the source of truth for
+    all size and money since, which leaves two overlapping stores for the
+    same facts — the kind of split that eventually produces a bug where one
+    is updated and the other isn't.
+
+    Only runs once the backfill has definitely completed, so the data is
+    never dropped before it's been copied. SQLite gained ALTER TABLE DROP
+    COLUMN in 3.35; on anything older the columns are simply left alone,
+    which is harmless since nothing reads them any more.
+    """
+    backfilled = conn.execute(
+        "SELECT value FROM app_settings WHERE key = 'containers_backfilled'"
+    ).fetchone()
+    if not backfilled:
+        return
+
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(fragrances)").fetchall()}
+    targets = [c for c in ("size_ml", "fill_level", "purchase_price") if c in cols]
+    if not targets:
+        return
+
+    if tuple(int(p) for p in sqlite3.sqlite_version.split(".")[:2]) < (3, 35):
+        print(
+            "NOTE: SQLite %s is too old for ALTER TABLE DROP COLUMN. Leaving the "
+            "legacy fragrances columns in place — nothing reads them, so this is "
+            "cosmetic only." % sqlite3.sqlite_version
+        )
+        return
+
+    # Safety net: never drop a column while any non-wishlist fragrance is
+    # still missing the container that should be holding its data.
+    stranded = conn.execute(
+        """
+        SELECT COUNT(*) FROM fragrances f
+        WHERE f.is_wishlist = 0
+          AND NOT EXISTS (SELECT 1 FROM containers c WHERE c.fragrance_id = f.id)
+        """
+    ).fetchone()[0]
+    if stranded:
+        print(
+            f"NOTE: {stranded} fragrance(s) have no container yet — leaving the "
+            "legacy columns in place rather than risk dropping un-migrated data."
+        )
+        return
+
+    for col in targets:
+        conn.execute(f"ALTER TABLE fragrances DROP COLUMN {col}")
 
 
 def init_db():
@@ -266,6 +389,37 @@ def render_scrap_markdown(text):
 
 
 app.jinja_env.filters["render_scrap_markdown"] = render_scrap_markdown
+
+
+def _trim_decimal(value):
+    """70.0 -> '70', 1.5 -> '1.5'. Container sizes span whole-number bottles
+    and fractional samples, and '70.0ml' reads like a measurement error."""
+    if value is None:
+        return ""
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return value
+    return str(int(f)) if f == int(f) else str(round(f, 2))
+
+
+app.jinja_env.filters["trim_decimal"] = _trim_decimal
+
+
+def _accord_chips(accords):
+    """Stored accord rows -> the 'name:strength' chip strings the form
+    edits, so round-tripping an edit doesn't silently drop the strengths."""
+    out = []
+    for a in accords or []:
+        name = a.get("name") if isinstance(a, dict) else str(a)
+        if not name:
+            continue
+        strength = a.get("strength") if isinstance(a, dict) else None
+        out.append(f"{name}:{_trim_decimal(strength)}" if strength else name)
+    return out
+
+
+app.jinja_env.filters["accord_chips"] = _accord_chips
 
 
 def _set_todays_fragrance(fragrance_id):
@@ -530,18 +684,115 @@ def get_all_fragrances_light(wishlist=False, respect_owned_filter=False):
     return result
 
 
+SPRAYS_PER_ML = 10
+SPRAYS_PER_WEAR = 6
+CONTAINER_TYPES = ["bottle", "decant", "sample", "travel"]
+CONTAINER_TYPE_LABELS = {
+    "bottle": "Bottle", "decant": "Decant", "sample": "Sample", "travel": "Travel Spray",
+}
+
+
 def _cost_per_wear_from_size(price, size_ml):
-    """Cost per wear from bottle economics — 10 sprays per ml (1,000
+    """Cost per wear from container economics — 10 sprays per ml (1,000
     sprays in a 100ml bottle), 6 sprays per wear — rather than actual
     purchase price divided by times logged worn. This is a fixed number
-    based on price and bottle size alone; it doesn't change as you log
-    more wears, and doesn't need any wear log data to compute at all.
+    based on price and size alone; it doesn't change as you log more
+    wears, and doesn't need any wear log data to compute at all.
     Needs both a price and a size to mean anything."""
     if not price or not size_ml:
         return None
-    total_sprays = size_ml * 10
-    cost_per_spray = price / total_sprays
-    return cost_per_spray * 6
+    total_sprays = size_ml * SPRAYS_PER_ML
+    return (price / total_sprays) * SPRAYS_PER_WEAR
+
+
+def get_containers(fragrance_id):
+    """Every physical container held for a fragrance, each with its own
+    derived remaining volume and per-wear cost. Unfinished containers sort
+    first, then by type (bottle before decant before sample)."""
+    db = get_db()
+    rows = db.execute(
+        """
+        SELECT * FROM containers WHERE fragrance_id = ?
+        ORDER BY is_finished,
+                 CASE container_type WHEN 'bottle' THEN 0 WHEN 'travel' THEN 1
+                                     WHEN 'decant' THEN 2 ELSE 3 END,
+                 id
+        """,
+        (fragrance_id,),
+    ).fetchall()
+    result = []
+    for r in rows:
+        c = dict(r)
+        size = c["size_ml"]
+        c["type_label"] = CONTAINER_TYPE_LABELS.get(c["container_type"], c["container_type"].title())
+        c["ml_remaining"] = round(size * c["fill_level"] / 100.0, 2) if size else None
+        c["wears_remaining"] = (
+            int(c["ml_remaining"] * SPRAYS_PER_ML / SPRAYS_PER_WEAR) if c["ml_remaining"] else None
+        )
+        c["cost_per_wear"] = _cost_per_wear_from_size(c["purchase_price"], size)
+        result.append(c)
+    return result
+
+
+def _container_economics(containers, wear_count, first_worn_at):
+    """Fragrance-level rollup across containers.
+
+    cost_per_wear is *blended* rather than averaged: total money spent
+    divided by total sprays bought. Averaging the per-container figures
+    would let a $8 sample distort a $325 bottle's economics equally,
+    which isn't how the money actually worked out.
+
+    runout is projected from your observed wear rate, so it only appears
+    once there's enough history for the rate to mean anything.
+    """
+    live = [c for c in containers if not c["is_finished"]]
+    priced = [c for c in containers if c["purchase_price"] and c["size_ml"]]
+
+    total_spent = sum(c["purchase_price"] for c in containers if c["purchase_price"]) or None
+    ml_remaining = sum(c["ml_remaining"] for c in live if c["ml_remaining"]) or None
+    wears_remaining = sum(c["wears_remaining"] for c in live if c["wears_remaining"]) or None
+
+    cost_per_wear = None
+    if priced:
+        total_sprays = sum(c["size_ml"] * SPRAYS_PER_ML for c in priced)
+        if total_sprays:
+            cost_per_wear = (sum(c["purchase_price"] for c in priced) / total_sprays) * SPRAYS_PER_WEAR
+
+    runout_days = None
+    if wears_remaining and wear_count >= 3 and first_worn_at:
+        try:
+            first = datetime.strptime(first_worn_at.split(".")[0], "%Y-%m-%d %H:%M:%S")
+            days_tracked = max((datetime.utcnow() - first).days, 1)
+            wears_per_day = wear_count / days_tracked
+            if wears_per_day > 0:
+                runout_days = int(wears_remaining / wears_per_day)
+        except (ValueError, TypeError):
+            runout_days = None
+
+    return {
+        "container_count": len(containers),
+        "live_container_count": len(live),
+        "total_spent": total_spent,
+        "ml_remaining": round(ml_remaining, 1) if ml_remaining else None,
+        "wears_remaining": wears_remaining,
+        "cost_per_wear": cost_per_wear,
+        "runout_days": runout_days,
+    }
+
+
+def _humanize_runout(days):
+    """'runs out in about 8 months'-style text. Deliberately vague past a
+    few weeks — the underlying wear-rate estimate isn't precise enough to
+    justify 'in 247 days'."""
+    if days is None:
+        return None
+    if days < 14:
+        return f"about {days} day{'s' if days != 1 else ''}"
+    if days < 60:
+        return f"about {days // 7} weeks"
+    if days < 730:
+        return f"about {max(days // 30, 2)} months"
+    return f"over {days // 365} years"
 
 
 def get_fragrance_full(fragrance_id):
@@ -608,9 +859,24 @@ def get_fragrance_full(fragrance_id):
     frag["wear_count"] = len(frag["wear_log"])
     frag["last_worn"] = frag["wear_log"][0]["worn_at"] if frag["wear_log"] else None
     frag["last_worn_display"] = _humanize_days_ago(frag["last_worn"])
-    frag["cost_per_wear"] = _cost_per_wear_from_size(
-        frag.get("purchase_price") or frag.get("price"), frag.get("size_ml")
-    )
+    first_worn = frag["wear_log"][-1]["worn_at"] if frag["wear_log"] else None
+
+    frag["containers"] = get_containers(fragrance_id)
+    frag["economics"] = _container_economics(frag["containers"], frag["wear_count"], first_worn)
+    frag["cost_per_wear"] = frag["economics"]["cost_per_wear"]
+    frag["runout_text"] = _humanize_runout(frag["economics"]["runout_days"])
+
+    frag["accords"] = [
+        dict(a) for a in db.execute(
+            """
+            SELECT a.name, fa.strength
+            FROM fragrance_accords fa JOIN accords a ON a.id = fa.accord_id
+            WHERE fa.fragrance_id = ?
+            ORDER BY fa.position, fa.strength DESC
+            """,
+            (fragrance_id,),
+        ).fetchall()
+    ]
 
     return frag
 
@@ -735,8 +1001,11 @@ def stats_summary():
         """
     ).fetchone()["c"]
     spend_row = db.execute(
-        "SELECT COUNT(purchase_price) AS purchased_count, SUM(purchase_price) AS total_spent "
-        "FROM fragrances WHERE is_wishlist = 0"
+        """
+        SELECT COUNT(c.purchase_price) AS purchased_count, SUM(c.purchase_price) AS total_spent
+        FROM containers c JOIN fragrances f ON f.id = c.fragrance_id
+        WHERE f.is_wishlist = 0
+        """
     ).fetchone()
     rating_row = db.execute(
         "SELECT COUNT(rating) AS rated_count, AVG(rating) AS avg_rating "
@@ -803,6 +1072,78 @@ def stats_top_houses(limit=5):
 
 
 _MONTH_NAMES = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def stats_by_occasion(limit=8):
+    """What you actually reach for, by occasion."""
+    db = get_db()
+    rows = db.execute(
+        """
+        SELECT occasion AS label, COUNT(*) AS cnt
+        FROM wear_log WHERE occasion IS NOT NULL AND TRIM(occasion) != ''
+        GROUP BY LOWER(occasion) ORDER BY cnt DESC, label ASC LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return _with_bar_pct([dict(r) for r in rows])
+
+
+def stats_compliment_leaders(limit=5):
+    """Which bottles actually earn compliments — rate, not raw count, so a
+    fragrance worn twice to great effect isn't buried under a daily driver.
+    Needs at least 2 logged wears before a rate means anything."""
+    db = get_db()
+    rows = db.execute(
+        """
+        SELECT f.id, (f.brand || ' ' || f.name) AS label,
+               COUNT(w.id) AS wears, SUM(w.complimented) AS compliments
+        FROM fragrances f JOIN wear_log w ON w.fragrance_id = f.id
+        GROUP BY f.id HAVING wears >= 2 AND compliments > 0
+        """
+    ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["rate"] = d["compliments"] / d["wears"] * 100
+        d["cnt"] = d["compliments"]
+        out.append(d)
+    out.sort(key=lambda x: (-x["rate"], -x["compliments"]))
+    return _with_bar_pct(out[:limit])
+
+
+def stats_by_temperature(limit=5):
+    """Cold-weather versus warm-weather picks, from the temperatures you
+    actually logged rather than the season checkboxes you set once."""
+    db = get_db()
+    rows = db.execute(
+        """
+        SELECT (f.brand || ' ' || f.name) AS label, f.id,
+               AVG(w.weather_temp_f) AS avg_temp, COUNT(*) AS cnt
+        FROM fragrances f JOIN wear_log w ON w.fragrance_id = f.id
+        WHERE w.weather_temp_f IS NOT NULL
+        GROUP BY f.id HAVING cnt >= 2
+        """
+    ).fetchall()
+    data = [dict(r) for r in rows]
+    coldest = sorted(data, key=lambda x: x["avg_temp"])[:limit]
+    warmest = sorted(data, key=lambda x: -x["avg_temp"])[:limit]
+    return coldest, warmest
+
+
+def stats_running_low(threshold=15, limit=8):
+    """Containers close to empty, so a favourite doesn't run out unnoticed."""
+    db = get_db()
+    rows = db.execute(
+        """
+        SELECT c.id, c.fill_level, c.container_type, c.size_ml,
+               f.id AS fragrance_id, (f.brand || ' ' || f.name) AS label
+        FROM containers c JOIN fragrances f ON f.id = c.fragrance_id
+        WHERE c.is_finished = 0 AND c.fill_level <= ? AND f.is_wishlist = 0
+        ORDER BY c.fill_level ASC LIMIT ?
+        """,
+        (threshold, limit),
+    ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def stats_timeline(months=12):
@@ -880,32 +1221,35 @@ def stats_needs_love(limit=8, stale_days=90):
 
 def stats_best_value(limit=5):
     """Top N by total value actually gotten out of wearing it — wear count
-    times the size/price-derived cost per wear (see
-    _cost_per_wear_from_size). Needs a size and a price (purchase price,
-    falling back to reference price) to compute at all; wear count alone
-    isn't enough since a fragrance with no price/size attached can't have
-    a dollar value attached to its wears. Computed in Python rather than
-    SQL since the per-row formula has an intermediate step (cost per wear)
-    that's clearer to reason about outside a single query, and this is
-    personal-collection scale, not a performance-sensitive path."""
+    times the blended cost per wear across every container of that
+    fragrance. Blended (total spent / total sprays bought) for the same
+    reason the detail page is: averaging per-container figures would let a
+    cheap sample distort an expensive bottle's economics equally.
+
+    Needs at least one container with both a size and a price; wear count
+    alone isn't enough, since a fragrance with no money attached can't
+    have a dollar value attached to its wears."""
     db = get_db()
     rows = db.execute(
         """
         SELECT f.id, f.brand, f.name,
-               COALESCE(f.purchase_price, f.price) AS price_for_calc,
-               f.size_ml, COUNT(w.id) AS wear_count
+               SUM(c.purchase_price) AS total_price,
+               SUM(c.size_ml) AS total_ml,
+               (SELECT COUNT(*) FROM wear_log w WHERE w.fragrance_id = f.id) AS wear_count
         FROM fragrances f
-        JOIN wear_log w ON w.fragrance_id = f.id
-        WHERE f.is_wishlist = 0 AND f.size_ml IS NOT NULL
-          AND COALESCE(f.purchase_price, f.price) IS NOT NULL
+        JOIN containers c ON c.fragrance_id = f.id
+        WHERE f.is_wishlist = 0
+          AND c.purchase_price IS NOT NULL AND c.size_ml IS NOT NULL
         GROUP BY f.id
+        HAVING wear_count > 0
         """
     ).fetchall()
     result = []
     for r in rows:
-        cost_per_wear = _cost_per_wear_from_size(r["price_for_calc"], r["size_ml"])
-        if cost_per_wear is None:
+        total_sprays = (r["total_ml"] or 0) * SPRAYS_PER_ML
+        if not total_sprays or not r["total_price"]:
             continue
+        cost_per_wear = (r["total_price"] / total_sprays) * SPRAYS_PER_WEAR
         result.append({
             "id": r["id"], "brand": r["brand"], "name": r["name"],
             "wear_count": r["wear_count"], "cost_per_wear": cost_per_wear,
@@ -916,29 +1260,30 @@ def stats_best_value(limit=5):
 
 
 def stats_price_extremes():
-    """Most/least expensive by purchase_price (what you actually paid), not the
-    Fragrantica reference price — matches "Total Spent" using the same basis.
-    Wishlist items are excluded (nothing's been paid for those yet). Returns
-    (most_expensive, cheapest), either possibly None if nothing qualifies."""
+    """Most/least expensive by what you actually paid, summed across every
+    container of that fragrance — not the Fragrantica reference price.
+    Matches "Total Spent" on the same basis. Two 5ml decants at $24 each
+    count as $48 invested in that fragrance, which is the honest figure.
+
+    Wishlist items are excluded (nothing's been paid for those yet).
+    Returns (most_expensive, cheapest), either possibly None."""
     db = get_db()
-    most_expensive = db.execute(
-        """
-        SELECT id, brand, name, image_filename, purchase_price
-        FROM fragrances
-        WHERE purchase_price IS NOT NULL AND is_wishlist = 0
-        ORDER BY purchase_price DESC, name ASC
-        LIMIT 1
-        """
-    ).fetchone()
-    cheapest = db.execute(
-        """
-        SELECT id, brand, name, image_filename, purchase_price
-        FROM fragrances
-        WHERE purchase_price IS NOT NULL AND is_wishlist = 0
-        ORDER BY purchase_price ASC, name ASC
-        LIMIT 1
-        """
-    ).fetchone()
+
+    def _extreme(direction):
+        return db.execute(
+            f"""
+            SELECT f.id, f.brand, f.name, f.image_filename,
+                   SUM(c.purchase_price) AS purchase_price
+            FROM fragrances f JOIN containers c ON c.fragrance_id = f.id
+            WHERE c.purchase_price IS NOT NULL AND f.is_wishlist = 0
+            GROUP BY f.id
+            ORDER BY purchase_price {direction}, f.name ASC
+            LIMIT 1
+            """
+        ).fetchone()
+
+    most_expensive = _extreme("DESC")
+    cheapest = _extreme("ASC")
     return (
         dict(most_expensive) if most_expensive else None,
         dict(cheapest) if cheapest else None,
@@ -1251,6 +1596,26 @@ def _prune_orphaned_tags(db):
     db.execute("DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM fragrance_tags)")
 
 
+def upsert_accords(db, fragrance_id, accord_entries):
+    """Accord entries arrive as plain names, optionally suffixed with a
+    strength as 'woody:82'. Order is preserved via `position` because
+    accords are ranked by prominence, not alphabetical."""
+    db.execute("DELETE FROM fragrance_accords WHERE fragrance_id = ?", (fragrance_id,))
+    for i, entry in enumerate(accord_entries):
+        name, _, strength_raw = entry.partition(":")
+        name = name.strip().lower()
+        if not name:
+            continue
+        strength = _parse_optional_float(strength_raw)
+        db.execute("INSERT OR IGNORE INTO accords (name) VALUES (?)", (name,))
+        row = db.execute("SELECT id FROM accords WHERE name = ?", (name,)).fetchone()
+        db.execute(
+            "INSERT OR IGNORE INTO fragrance_accords (fragrance_id, accord_id, strength, position) "
+            "VALUES (?, ?, ?, ?)",
+            (fragrance_id, row["id"], strength, i),
+        )
+
+
 def replace_seasons(db, fragrance_id, seasons):
     db.execute("DELETE FROM seasons WHERE fragrance_id = ?", (fragrance_id,))
     for s in seasons:
@@ -1467,6 +1832,14 @@ def _handle_form_submit(mode, fragrance_id, existing=None):
     except ValueError:
         rating = None
 
+    def _perf_rating(field):
+        v = _parse_optional_int(request.form.get(field))
+        return v if (v is not None and 1 <= v <= 5) else None
+
+    longevity_rating = _perf_rating("longevity_rating")
+    sillage_rating = _perf_rating("sillage_rating")
+    projection_rating = _perf_rating("projection_rating")
+
     fill_level_raw = request.form.get("fill_level", "").strip()
     try:
         fill_level = int(fill_level_raw) if fill_level_raw else 100
@@ -1534,15 +1907,17 @@ def _handle_form_submit(mode, fragrance_id, existing=None):
             """
             INSERT INTO fragrances
                 (brand, name, subname, image_filename, description, daynight,
-                 price, purchase_price, is_gift, is_discontinued, is_wishlist,
+                 price, is_gift, is_discontinued, is_wishlist,
                  currently_owned, gave_away, bottles_owned, fragrantica_url,
-                 rating, fill_level, private_notes, size_ml)
+                 rating, private_notes,
+                 longevity_rating, sillage_rating, projection_rating)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (brand, name, subname, image_filename, description, daynight,
-             price, purchase_price, is_gift, is_discontinued, is_wishlist,
+             price, is_gift, is_discontinued, is_wishlist,
              currently_owned, gave_away, bottles_owned, fragrantica_url,
-             rating, fill_level, private_notes, size_ml),
+             rating, private_notes,
+             longevity_rating, sillage_rating, projection_rating),
         )
         fragrance_id = cur.lastrowid
     else:
@@ -1550,21 +1925,39 @@ def _handle_form_submit(mode, fragrance_id, existing=None):
             """
             UPDATE fragrances
             SET brand = ?, name = ?, subname = ?, image_filename = ?, description = ?, daynight = ?,
-                price = ?, purchase_price = ?, is_gift = ?, is_discontinued = ?, is_wishlist = ?,
+                price = ?, is_gift = ?, is_discontinued = ?, is_wishlist = ?,
                 currently_owned = ?, gave_away = ?, bottles_owned = ?, fragrantica_url = ?,
-                rating = ?, fill_level = ?, private_notes = ?, size_ml = ?
+                rating = ?, private_notes = ?,
+                longevity_rating = ?, sillage_rating = ?, projection_rating = ?
             WHERE id = ?
             """,
             (brand, name, subname, image_filename, description, daynight,
-             price, purchase_price, is_gift, is_discontinued, is_wishlist,
+             price, is_gift, is_discontinued, is_wishlist,
              currently_owned, gave_away, bottles_owned, fragrantica_url,
-             rating, fill_level, private_notes, size_ml, fragrance_id),
+             rating, private_notes,
+             longevity_rating, sillage_rating, projection_rating, fragrance_id),
         )
 
     replace_seasons(db, fragrance_id, seasons)
     replace_notes(db, fragrance_id, notes)
     upsert_tags(db, fragrance_id, tags)
     _prune_orphaned_tags(db)
+    upsert_accords(db, fragrance_id, parse_comma_list(request.form.get("accords_csv", "")))
+
+    # Adding a fragrance implies you have one of it, so the size/price/fill
+    # entered on the form become its first container. Editing deliberately
+    # doesn't touch containers — once a fragrance exists, containers are
+    # managed individually from its own page, where a second bottle or a
+    # decant can be added without overwriting the first.
+    if mode == "add" and not is_wishlist:
+        db.execute(
+            """
+            INSERT INTO containers
+                (fragrance_id, container_type, size_ml, fill_level, purchase_price)
+            VALUES (?, 'bottle', ?, ?, ?)
+            """,
+            (fragrance_id, size_ml, fill_level, purchase_price),
+        )
 
     notes_images_raw = request.form.get("notes_images_json", "").strip()
     if notes_images_raw:
@@ -1957,11 +2350,167 @@ def log_wear(fragrance_id):
     frag = db.execute("SELECT id FROM fragrances WHERE id = ?", (fragrance_id,)).fetchone()
     if frag is None:
         abort(404)
-    db.execute("INSERT INTO wear_log (fragrance_id) VALUES (?)", (fragrance_id,))
+
+    # Every field here is optional — posting the bare form (the one-click
+    # "I Wore This Today" button) still works exactly as it did before.
+    occasion = (request.form.get("occasion", "") or "").strip() or None
+    weather_summary = (request.form.get("weather_summary", "") or "").strip() or None
+    wear_note = (request.form.get("wear_note", "") or "").strip() or None
+    complimented = 1 if request.form.get("complimented") else 0
+    container_id = _parse_optional_int(request.form.get("container_id"))
+    sprays = _parse_optional_int(request.form.get("sprays"))
+    temp_f = _parse_optional_float(request.form.get("weather_temp_f"))
+    longevity_hours = _parse_optional_float(request.form.get("longevity_hours"))
+
+    # Only accept a container that actually belongs to this fragrance —
+    # a hand-crafted POST shouldn't be able to drain someone else's bottle.
+    if container_id is not None:
+        owns = db.execute(
+            "SELECT id, size_ml, fill_level FROM containers WHERE id = ? AND fragrance_id = ?",
+            (container_id, fragrance_id),
+        ).fetchone()
+        if owns is None:
+            container_id = None
+
+    db.execute(
+        """
+        INSERT INTO wear_log
+            (fragrance_id, container_id, occasion, weather_temp_f, weather_summary,
+             sprays, longevity_hours, complimented, wear_note)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (fragrance_id, container_id, occasion, temp_f, weather_summary,
+         sprays, longevity_hours, complimented, wear_note),
+    )
+
+    depleted_msg = ""
+    if container_id is not None:
+        depleted_msg = _decrement_container_fill(db, container_id, sprays or SPRAYS_PER_WEAR)
+
     _set_todays_fragrance(fragrance_id)
     db.commit()
-    flash("Logged today's wear.", "success")
+    flash("Logged today's wear." + depleted_msg, "success")
     return redirect(url_for("detail", fragrance_id=fragrance_id))
+
+
+def _parse_optional_int(raw):
+    try:
+        return int(raw) if raw not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_optional_float(raw):
+    try:
+        return float(raw) if raw not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _decrement_container_fill(db, container_id, sprays):
+    """Close the loop: wearing from a container actually uses it up.
+
+    Only meaningful when the container has a known size — without one
+    there's no way to turn sprays into a percentage. Clamps at 0 and
+    auto-marks the container finished when it empties, returning a short
+    string to append to the flash message so the user finds out at the
+    moment it happens rather than noticing later.
+    """
+    row = db.execute(
+        "SELECT size_ml, fill_level, is_finished FROM containers WHERE id = ?", (container_id,)
+    ).fetchone()
+    if row is None or not row["size_ml"] or row["is_finished"]:
+        return ""
+
+    total_sprays = row["size_ml"] * SPRAYS_PER_ML
+    if total_sprays <= 0:
+        return ""
+
+    pct_used = (sprays / total_sprays) * 100.0
+    new_fill = max(0, round(row["fill_level"] - pct_used))
+
+    if new_fill <= 0:
+        db.execute("UPDATE containers SET fill_level = 0, is_finished = 1 WHERE id = ?", (container_id,))
+        return " That container is now empty — marked as finished."
+    db.execute("UPDATE containers SET fill_level = ? WHERE id = ?", (new_fill, container_id))
+    return ""
+
+
+def _container_form_values(form):
+    ctype = (form.get("container_type", "") or "bottle").strip()
+    if ctype not in CONTAINER_TYPES:
+        ctype = "bottle"
+    fill = _parse_optional_int(form.get("fill_level"))
+    if fill is None or not (0 <= fill <= 100):
+        fill = 100
+    return {
+        "container_type": ctype,
+        "size_ml": _parse_optional_float(form.get("size_ml")),
+        "fill_level": fill,
+        "purchase_price": _parse_optional_float(form.get("purchase_price")),
+        "purchase_date": (form.get("purchase_date", "") or "").strip() or None,
+        "batch_code": (form.get("batch_code", "") or "").strip() or None,
+        "label": (form.get("label", "") or "").strip() or None,
+        "is_finished": 1 if form.get("is_finished") else 0,
+    }
+
+
+@app.route("/fragrance/<int:fragrance_id>/containers/add", methods=["POST"])
+@login_required
+def add_container(fragrance_id):
+    db = get_db()
+    if db.execute("SELECT id FROM fragrances WHERE id = ?", (fragrance_id,)).fetchone() is None:
+        abort(404)
+    v = _container_form_values(request.form)
+    db.execute(
+        """
+        INSERT INTO containers
+            (fragrance_id, container_type, size_ml, fill_level, purchase_price,
+             purchase_date, batch_code, label, is_finished)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (fragrance_id, v["container_type"], v["size_ml"], v["fill_level"], v["purchase_price"],
+         v["purchase_date"], v["batch_code"], v["label"], v["is_finished"]),
+    )
+    db.commit()
+    flash(f"Added a {CONTAINER_TYPE_LABELS[v['container_type']].lower()}.", "success")
+    return redirect(url_for("detail", fragrance_id=fragrance_id))
+
+
+@app.route("/containers/<int:container_id>/edit", methods=["POST"])
+@login_required
+def edit_container(container_id):
+    db = get_db()
+    row = db.execute("SELECT fragrance_id FROM containers WHERE id = ?", (container_id,)).fetchone()
+    if row is None:
+        abort(404)
+    v = _container_form_values(request.form)
+    db.execute(
+        """
+        UPDATE containers
+        SET container_type = ?, size_ml = ?, fill_level = ?, purchase_price = ?,
+            purchase_date = ?, batch_code = ?, label = ?, is_finished = ?
+        WHERE id = ?
+        """,
+        (v["container_type"], v["size_ml"], v["fill_level"], v["purchase_price"],
+         v["purchase_date"], v["batch_code"], v["label"], v["is_finished"], container_id),
+    )
+    db.commit()
+    flash("Container updated.", "success")
+    return redirect(url_for("detail", fragrance_id=row["fragrance_id"]))
+
+
+@app.route("/containers/<int:container_id>/delete", methods=["POST"])
+@login_required
+def delete_container(container_id):
+    db = get_db()
+    row = db.execute("SELECT fragrance_id FROM containers WHERE id = ?", (container_id,)).fetchone()
+    if row is None:
+        abort(404)
+    db.execute("DELETE FROM containers WHERE id = ?", (container_id,))
+    db.commit()
+    flash("Container removed. Its wear history was kept.", "success")
+    return redirect(url_for("detail", fragrance_id=row["fragrance_id"]))
 
 
 @app.route("/wear-log/<int:entry_id>/delete", methods=["POST"])
@@ -2125,6 +2674,22 @@ def export_csv():
     ).fetchall():
         tags_by_fid[r["fragrance_id"]] = r["tags_concat"].split(SEP)
 
+    # Containers own size/fill/price now, so the CSV reports the rollup:
+    # total paid across every container, total ml, and a weighted average
+    # fill across the ones still in use.
+    containers_by_fid = {}
+    for r in db.execute(
+        """
+        SELECT fragrance_id,
+               SUM(purchase_price) AS total_paid,
+               SUM(size_ml) AS total_ml,
+               COUNT(*) AS container_count,
+               AVG(CASE WHEN is_finished = 0 THEN fill_level END) AS avg_fill
+        FROM containers GROUP BY fragrance_id
+        """
+    ).fetchall():
+        containers_by_fid[r["fragrance_id"]] = dict(r)
+
     wear_by_fid = {
         r["fragrance_id"]: (r["wear_count"], r["last_worn"])
         for r in db.execute(
@@ -2147,6 +2712,7 @@ def export_csv():
         notes_by_tier = notes_by_fid.get(fid, {})
         tags = tags_by_fid.get(fid, [])
         wear_count, last_worn = wear_by_fid.get(fid, (0, None))
+        cont = containers_by_fid.get(fid, {})
         writer.writerow([
             f["brand"], f["name"], f["subname"] or "", f["description"] or "", f["daynight"] or "",
             ", ".join(seasons),
@@ -2155,9 +2721,9 @@ def export_csv():
             "; ".join(notes_by_tier.get("base", [])),
             ", ".join(tags),
             f["price"] if f["price"] is not None else "",
-            f["purchase_price"] if f["purchase_price"] is not None else "",
+            cont.get("total_paid") if cont.get("total_paid") is not None else "",
             f["rating"] if f["rating"] is not None else "",
-            f["fill_level"],
+            round(cont["avg_fill"]) if cont.get("avg_fill") is not None else "",
             "Yes" if f["currently_owned"] else "No",
             f["bottles_owned"],
             "Yes" if f["is_gift"] else "No",
@@ -2272,6 +2838,7 @@ def stats():
     summary = stats_summary()
     daynight_segments, daynight_gradient, daynight_total = stats_daynight_donut()
     most_expensive, cheapest = stats_price_extremes()
+    _temp_split = stats_by_temperature(5)
     return render_template(
         "stats.html",
         **summary,
@@ -2288,6 +2855,11 @@ def stats():
         needs_love=stats_needs_love(8),
         best_value=stats_best_value(5),
         timeline=stats_timeline(12),
+        by_occasion=stats_by_occasion(8),
+        compliment_leaders=stats_compliment_leaders(5),
+        temp_coldest=_temp_split[0],
+        temp_warmest=_temp_split[1],
+        running_low=stats_running_low(),
     )
 
 

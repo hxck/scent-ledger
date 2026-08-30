@@ -144,6 +144,89 @@
     </div>
   </div>
 
+  <div class="stats-zone-label">Your Habits <span class="section-label-note">(from logged wear details)</span></div>
+  <div class="stats-grid">
+    <div class="stats-panel">
+      <div class="section-label">By Occasion</div>
+      {% if by_occasion %}
+        <div class="bar-chart">
+          {% for row in by_occasion %}
+            <div class="bar-row">
+              <div class="bar-label">{{ row.label | title }}</div>
+              <div class="bar-track"><div class="bar-fill" data-target="{{ row.pct }}" style="width:0%;"></div></div>
+              <div class="bar-count">{{ row.cnt }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="stats-empty-note">Add an occasion when logging a wear and it'll show up here.</p>
+      {% endif %}
+    </div>
+
+    <div class="stats-panel">
+      <div class="section-label">Compliment Getters <span class="section-label-note">(rate, min. 2 wears)</span></div>
+      {% if compliment_leaders %}
+        <ul class="needs-love-list">
+          {% for row in compliment_leaders %}
+            <li>
+              <a href="{{ url_for('detail', fragrance_id=row.id) }}">{{ row.label }}</a>
+              <span class="needs-love-when">{{ '%.0f'|format(row.rate) }}% ({{ row.compliments }}/{{ row.wears }})</span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="stats-empty-note">Tick "got a compliment" when logging a wear to build this up.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if temp_coldest or temp_warmest %}
+    <div class="stats-grid">
+      <div class="stats-panel">
+        <div class="section-label">Cold-Weather Picks <span class="section-label-note">(avg. logged temp)</span></div>
+        <ul class="needs-love-list">
+          {% for row in temp_coldest %}
+            <li>
+              <a href="{{ url_for('detail', fragrance_id=row.id) }}">{{ row.label }}</a>
+              <span class="needs-love-when">{{ '%.0f'|format(row.avg_temp) }}°F</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="stats-panel">
+        <div class="section-label">Warm-Weather Picks <span class="section-label-note">(avg. logged temp)</span></div>
+        <ul class="needs-love-list">
+          {% for row in temp_warmest %}
+            <li>
+              <a href="{{ url_for('detail', fragrance_id=row.id) }}">{{ row.label }}</a>
+              <span class="needs-love-when">{{ '%.0f'|format(row.avg_temp) }}°F</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if running_low %}
+    <div class="stats-grid">
+      <div class="stats-panel">
+        <div class="section-label">Running Low <span class="section-label-note">(15% or less)</span></div>
+        <ul class="needs-love-list">
+          {% for row in running_low %}
+            <li>
+              <a href="{{ url_for('detail', fragrance_id=row.fragrance_id) }}">{{ row.label }}</a>
+              <span class="needs-love-when">{{ row.fill_level }}% · {{ row.container_type }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="stats-panel">
+        <div class="section-label">&nbsp;</div>
+        <p class="stats-empty-note">Fill levels drop automatically as you log wears against a container.</p>
+      </div>
+    </div>
+  {% endif %}
+
   <div class="stats-zone-label">Usage &amp; Value</div>
   {% if most_expensive or cheapest %}
     <div class="stats-grid">

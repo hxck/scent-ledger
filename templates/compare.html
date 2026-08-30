@@ -91,9 +91,9 @@
           {% endfor %}
         </tr>
         <tr>
-          <td class="compare-row-label">Fill Level</td>
+          <td class="compare-row-label">Remaining</td>
           {% for f in fragrances %}
-            <td>{{ f['fill_level'] }}%</td>
+            <td>{% if f['economics']['ml_remaining'] %}{{ f['economics']['ml_remaining'] | trim_decimal }}ml left{% else %}<span class="compare-none">—</span>{% endif %}</td>
           {% endfor %}
         </tr>
         <tr>

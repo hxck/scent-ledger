@@ -118,6 +118,15 @@ function initStatsBars() {
 // back to brand+name — and if so, redirects to its Edit page (carrying the
 // same import payload) and fills in only the gaps there instead of creating a
 // duplicate. chipControllers: { top, middle, base, tags } from initChipField().
+
+// Accord payload objects -> the "name:strength" chip strings the form uses.
+function accordChips(accords) {
+  return (accords || []).map(function (a) {
+    if (!a || !a.name) return null;
+    return a.strength ? a.name + ':' + a.strength : a.name;
+  }).filter(Boolean);
+}
+
 async function initFragranticaImport(mode, chipControllers) {
   const hash = window.location.hash;
   if (!hash.startsWith('#import=')) return;
@@ -273,6 +282,9 @@ function fillAddMode(data, chipControllers) {
     if (data.notes.base && data.notes.base.length) chipControllers.base.setValues(data.notes.base);
   }
   if (data.tags && data.tags.length) chipControllers.tags.setValues(data.tags);
+  if (chipControllers.accords && data.accords && data.accords.length) {
+    chipControllers.accords.setValues(accordChips(data.accords));
+  }
   if (data.imageUrl) setImagePreview(data.imageUrl);
 
   const derived = deriveSeasonsAndDaynight(data.whenToWear);
@@ -290,7 +302,7 @@ function fillAddMode(data, chipControllers) {
   const noteCount = (data.notes?.top?.length || 0) + (data.notes?.middle?.length || 0) + (data.notes?.base?.length || 0);
   (noteCount ? found : missing).push('notes');
   (data.imageUrl ? found : missing).push('image');
-  (data.tags && data.tags.length ? found : missing).push('accord tags');
+  (data.accords && data.accords.length ? found : missing).push('accords');
   (data.price ? found : missing).push('price');
   (data.sourceUrl ? found : missing).push('Fragrantica link');
   (derived.seasons.length ? found : missing).push('season');
@@ -330,7 +342,10 @@ function fillEditModeGaps(data, chipControllers, matchedBy) {
     fillTierIfEmpty(chipControllers.middle, 'middle notes', data.notes.middle);
     fillTierIfEmpty(chipControllers.base, 'base notes', data.notes.base);
   }
-  fillTierIfEmpty(chipControllers.tags, 'accord tags', data.tags);
+  fillTierIfEmpty(chipControllers.tags, 'tags', data.tags);
+  if (chipControllers.accords) {
+    fillTierIfEmpty(chipControllers.accords, 'accords', accordChips(data.accords));
+  }
 
   if (data.imageUrl) {
     const preview = document.getElementById('uploadPreview');
@@ -536,3 +551,8 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener('scroll', syncFooterOffset);
 }
 
+// Detail page: "+ Add" reveals the new-container form.
+function toggleAddContainer() {
+  const panel = document.getElementById('addContainerPanel');
+  if (panel) panel.classList.toggle('open');
+}
