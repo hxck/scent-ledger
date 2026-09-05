@@ -1,0 +1,22 @@
+# Optional: automatic background removal on uploaded bottle photos.
+#
+# This stack is by far the largest thing in the image — onnxruntime (~54MB),
+# opencv (~94MB), scipy (~109MB) and numpy (~40MB), roughly 300MB against
+# about 10MB for the entire rest of the app. It is genuinely optional: the
+# app imports rembg lazily and falls back to storing the photo unmodified if
+# it isn't installed, so leaving this out costs you the cutout and nothing
+# else.
+#
+# Controlled by the INSTALL_BG_REMOVAL build arg in the Dockerfile, which
+# defaults to true so existing deployments keep working unchanged. Build with
+#   docker compose build --build-arg INSTALL_BG_REMOVAL=false
+# for a much smaller image.
+# Loosely pinned rather than an exact version: this was written without live
+# PyPI access to confirm the current latest release. Bump/pin tighter once
+# you've confirmed a version works for you.
+rembg>=2.0.50,<3.0
+# rembg doesn't reliably pull this in as a hard dependency across all its
+# versions (it's sometimes an extra, e.g. rembg[cpu]) — listed explicitly
+# so the build doesn't depend on that. This is the CPU build; if you're
+# deploying with a GPU available, swap this for onnxruntime-gpu instead.
+onnxruntime>=1.16,<2.0

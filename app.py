@@ -13,14 +13,13 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pathlib import Path
 
 from flask import (
     Flask, g, render_template, request, redirect, url_for, flash, abort, session, Response
 )
-from werkzeug.utils import secure_filename
 from PIL import Image
 import markdown as markdown_lib
 import bleach
@@ -47,6 +46,25 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"  # baseline CSRF mitigation for th
 # for a public-facing site with a login form) — off by default so local
 # http://localhost testing without TLS still works.
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
+
+# Static assets are served with a long max-age and a cache-busting ?v= stamp
+# derived from each file's mtime (see _static_cache_bust below). Without the
+# stamp a long max-age would mean CSS and JS edits don't reach anyone until
+# their cache expires; with it, the URL changes the moment the file does, so
+# repeat visits can safely reuse everything — stylesheet, script, and every
+# bottle photo — instead of refetching them.
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = timedelta(days=365)
+
+
+@app.url_defaults
+def _static_cache_bust(endpoint, values):
+    if endpoint != "static" or "filename" not in values:
+        return
+    try:
+        stamp = int(os.stat(os.path.join(app.static_folder, values["filename"])).st_mtime)
+    except OSError:
+        return  # missing file: let the normal 404 happen, don't stamp it
+    values["v"] = stamp
 app.permanent_session_lifetime = 30 * 24 * 60 * 60  # 30 days
 
 if ADMIN_PASSWORD == "changeme":
@@ -177,6 +195,7 @@ def _run_migrations(conn):
     conn.execute("CREATE INDEX IF NOT EXISTS idx_wear_log_container ON wear_log(container_id)")
 
     _backfill_containers(conn)
+    _repair_backfilled_container_dates(conn)
     _drop_legacy_fragrance_columns(conn)
 
 
@@ -211,10 +230,15 @@ def _backfill_containers(conn):
         )
         return
 
+    # created_at is carried over from the fragrance, not defaulted to now.
+    # Defaulting would stamp every pre-existing bottle with the migration
+    # date and collapse the whole Collection Timeline into a single spike
+    # in whichever month the upgrade happened.
     conn.execute(
         """
-        INSERT INTO containers (fragrance_id, container_type, size_ml, fill_level, purchase_price)
-        SELECT f.id, 'bottle', f.size_ml, f.fill_level, f.purchase_price
+        INSERT INTO containers (fragrance_id, container_type, size_ml, fill_level,
+                                purchase_price, created_at)
+        SELECT f.id, 'bottle', f.size_ml, f.fill_level, f.purchase_price, f.created_at
         FROM fragrances f
         WHERE f.is_wishlist = 0
           AND NOT EXISTS (SELECT 1 FROM containers c WHERE c.fragrance_id = f.id)
@@ -222,6 +246,40 @@ def _backfill_containers(conn):
     )
     conn.execute(
         "INSERT INTO app_settings (key, value) VALUES ('containers_backfilled', '1') "
+        "ON CONFLICT(key) DO UPDATE SET value = '1'"
+    )
+
+
+def _repair_backfilled_container_dates(conn):
+    """One-time repair for databases migrated by the first version of
+    _backfill_containers, which let created_at default to the migration
+    timestamp. That collapsed every pre-existing bottle into whichever
+    month the upgrade ran, so the Collection Timeline showed one large
+    spike instead of real history.
+
+    Scoped tightly on purpose: only a fragrance's *earliest* container,
+    only when it has no recorded purchase_date (nothing to override), and
+    only when its created_at is later than the fragrance's own — which is
+    the signature of a container stamped at migration time rather than
+    created alongside its fragrance. A container legitimately added later
+    is left alone, because it isn't the earliest one.
+    """
+    if conn.execute(
+        "SELECT 1 FROM app_settings WHERE key = 'container_dates_repaired'"
+    ).fetchone():
+        return
+
+    conn.execute(
+        """
+        UPDATE containers
+        SET created_at = (SELECT f.created_at FROM fragrances f WHERE f.id = containers.fragrance_id)
+        WHERE purchase_date IS NULL
+          AND id = (SELECT MIN(c2.id) FROM containers c2 WHERE c2.fragrance_id = containers.fragrance_id)
+          AND created_at > (SELECT f.created_at FROM fragrances f WHERE f.id = containers.fragrance_id)
+        """
+    )
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES ('container_dates_repaired', '1') "
         "ON CONFLICT(key) DO UPDATE SET value = '1'"
     )
 
@@ -1147,11 +1205,23 @@ def stats_running_low(threshold=15, limit=8):
 
 
 def stats_timeline(months=12):
-    """How the collection grew, by month, oldest to newest — the one thing
-    created_at was tracked for but never actually shown anywhere until now.
-    Always returns exactly `months` calendar-month buckets ending this month,
-    zero-filled where nothing was added — a real gap should show as an empty
-    bar, not be silently skipped and make the timeline look compressed."""
+    """How the collection grew, by month, oldest to newest.
+
+    Counts *containers*, keyed on when each was acquired, not when the
+    fragrance row was created. Those differ in two cases that both matter:
+    a wishlist item added in January and actually bought in June belongs in
+    June, and a second bottle or a decant of something you already own is a
+    real acquisition that a per-fragrance count would miss entirely.
+
+    purchase_date wins when you've recorded one, since that's the real
+    acquisition date; otherwise it falls back to when the container was
+    created here.
+
+    Always returns exactly `months` calendar-month buckets ending this
+    month, zero-filled where nothing was added — a real gap should show as
+    an empty bar, not be silently skipped and make the timeline look
+    compressed.
+    """
     db = get_db()
     now = datetime.now()
     buckets = []
@@ -1164,8 +1234,13 @@ def stats_timeline(months=12):
     buckets.reverse()
 
     rows = db.execute(
-        "SELECT strftime('%Y-%m', created_at) AS ym, COUNT(*) AS cnt "
-        "FROM fragrances WHERE is_wishlist = 0 GROUP BY ym"
+        """
+        SELECT strftime('%Y-%m', COALESCE(c.purchase_date, c.created_at)) AS ym,
+               COUNT(*) AS cnt
+        FROM containers c JOIN fragrances f ON f.id = c.fragrance_id
+        WHERE f.is_wishlist = 0
+        GROUP BY ym
+        """
     ).fetchall()
     counts_by_ym = {r["ym"]: r["cnt"] for r in rows}
 
@@ -1944,20 +2019,33 @@ def _handle_form_submit(mode, fragrance_id, existing=None):
     _prune_orphaned_tags(db)
     upsert_accords(db, fragrance_id, parse_comma_list(request.form.get("accords_csv", "")))
 
-    # Adding a fragrance implies you have one of it, so the size/price/fill
-    # entered on the form become its first container. Editing deliberately
-    # doesn't touch containers — once a fragrance exists, containers are
-    # managed individually from its own page, where a second bottle or a
-    # decant can be added without overwriting the first.
-    if mode == "add" and not is_wishlist:
-        db.execute(
-            """
-            INSERT INTO containers
-                (fragrance_id, container_type, size_ml, fill_level, purchase_price)
-            VALUES (?, 'bottle', ?, ?, ?)
-            """,
-            (fragrance_id, size_ml, fill_level, purchase_price),
-        )
+    # A fragrance you own should always have at least one container: that's
+    # where size, fill, price, purchase date and batch code live, and without
+    # one it has no stash, no cost-per-wear, and never appears in the
+    # timeline. Adding one directly seeds it from the form. Moving one off
+    # the wishlist has to seed it here instead, because the Edit form
+    # deliberately hides those fields (they'd be ambiguous once a fragrance
+    # can hold several containers), so there's nothing to copy from — the
+    # container starts bare and gets filled in from Your Stash.
+    if not is_wishlist:
+        has_container = db.execute(
+            "SELECT 1 FROM containers WHERE fragrance_id = ? LIMIT 1", (fragrance_id,)
+        ).fetchone()
+        if not has_container:
+            db.execute(
+                """
+                INSERT INTO containers
+                    (fragrance_id, container_type, size_ml, fill_level, purchase_price)
+                VALUES (?, 'bottle', ?, ?, ?)
+                """,
+                (fragrance_id, size_ml, fill_level, purchase_price),
+            )
+            if mode == "edit":
+                flash(
+                    "Moved into your collection — add the bottle's size and price "
+                    "under Your Stash to get cost per wear.",
+                    "success",
+                )
 
     notes_images_raw = request.form.get("notes_images_json", "").strip()
     if notes_images_raw:
