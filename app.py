@@ -1045,6 +1045,108 @@ def _with_bar_pct(rows):
     return rows
 
 
+# Every field the app can hold for a fragrance, grouped to match the sections
+# on the Add/Edit form so the completeness view and the form read the same way.
+# `where` is the container the field lives in: fragrance-level, or on any one
+# of its containers. Edit this single list to change what /metadata tracks.
+METADATA_FIELDS = [
+    ("photo",         "Photo",         "Identity"),
+    ("fragrantica",   "Fragrantica",   "Identity"),
+    ("description",   "Description",   "Character"),
+    ("notes",         "Notes",         "Character"),
+    ("accords",       "Accords",       "Character"),
+    ("tags",          "Tags",          "Character"),
+    ("seasons",       "Seasons",       "Character"),
+    ("daynight",      "Day/Night",     "Character"),
+    ("size",          "Bottle Size",   "Ownership"),
+    ("paid",          "Price Paid",    "Ownership"),
+    ("purchase_date", "Purchase Date", "Ownership"),
+    ("batch",         "Batch Code",    "Ownership"),
+    ("price",         "Retail Price",  "Ownership"),
+    ("rating",        "Rating",        "Personal"),
+    ("longevity",     "Longevity",     "Personal"),
+    ("sillage",       "Sillage",       "Personal"),
+    ("projection",    "Projection",    "Personal"),
+]
+
+METADATA_GROUPS = ["Identity", "Character", "Ownership", "Personal"]
+
+
+def get_metadata_completeness(include_wishlist=False):
+    """Which fields each fragrance has filled in, for the /metadata view.
+
+    One query with EXISTS subqueries rather than a lookup per fragrance —
+    at 34 fragrances an N+1 wouldn't be noticeable, but this page exists
+    precisely to be opened when the collection has grown.
+
+    Container-level fields (size, price paid, purchase date, batch code)
+    count as present if *any* container has them: a decant with no batch
+    code doesn't make the bottle's batch code missing.
+
+    Wishlist items are excluded by default. They have no containers, so
+    every ownership field would show as missing on rows where it isn't
+    actually actionable.
+    """
+    db = get_db()
+    rows = db.execute(
+        f"""
+        SELECT f.id, f.brand, f.name, f.image_filename, f.is_wishlist,
+               (f.image_filename IS NOT NULL AND TRIM(f.image_filename) != '')   AS has_photo,
+               (f.fragrantica_url IS NOT NULL AND TRIM(f.fragrantica_url) != '') AS has_fragrantica,
+               (f.description IS NOT NULL AND TRIM(f.description) != '')         AS has_description,
+               (f.daynight IS NOT NULL AND TRIM(f.daynight) != '')               AS has_daynight,
+               (f.price IS NOT NULL)            AS has_price,
+               (f.rating IS NOT NULL)           AS has_rating,
+               (f.longevity_rating IS NOT NULL) AS has_longevity,
+               (f.sillage_rating IS NOT NULL)   AS has_sillage,
+               (f.projection_rating IS NOT NULL) AS has_projection,
+               EXISTS(SELECT 1 FROM notes n            WHERE n.fragrance_id = f.id) AS has_notes,
+               EXISTS(SELECT 1 FROM fragrance_accords a WHERE a.fragrance_id = f.id) AS has_accords,
+               EXISTS(SELECT 1 FROM fragrance_tags t    WHERE t.fragrance_id = f.id) AS has_tags,
+               EXISTS(SELECT 1 FROM seasons s           WHERE s.fragrance_id = f.id) AS has_seasons,
+               EXISTS(SELECT 1 FROM containers c WHERE c.fragrance_id = f.id AND c.size_ml IS NOT NULL)        AS has_size,
+               EXISTS(SELECT 1 FROM containers c WHERE c.fragrance_id = f.id AND c.purchase_price IS NOT NULL) AS has_paid,
+               EXISTS(SELECT 1 FROM containers c WHERE c.fragrance_id = f.id AND c.purchase_date IS NOT NULL)  AS has_purchase_date,
+               EXISTS(SELECT 1 FROM containers c WHERE c.fragrance_id = f.id AND c.batch_code IS NOT NULL)     AS has_batch
+        FROM fragrances f
+        {'' if include_wishlist else 'WHERE f.is_wishlist = 0'}
+        ORDER BY f.brand COLLATE NOCASE, f.name COLLATE NOCASE
+        """
+    ).fetchall()
+
+    keys = [k for k, _, _ in METADATA_FIELDS]
+    result, missing_counts = [], {k: 0 for k in keys}
+    for r in rows:
+        d = dict(r)
+        d["fields"] = {k: bool(r[f"has_{k}"]) for k in keys}
+        d["filled"] = sum(d["fields"].values())
+        d["total"] = len(keys)
+        d["pct"] = round(d["filled"] / d["total"] * 100)
+        for k, present in d["fields"].items():
+            if not present:
+                missing_counts[k] += 1
+        result.append(d)
+
+    # Least complete first: this page is a to-do list, so the rows that
+    # need work belong at the top rather than buried alphabetically.
+    result.sort(key=lambda x: (x["filled"], x["brand"].lower(), x["name"].lower()))
+
+    summary = {
+        "fragrance_count": len(result),
+        "field_count": len(keys),
+        "filled": sum(x["filled"] for x in result),
+        "possible": len(result) * len(keys),
+        "missing_by_field": sorted(
+            ({"key": k, "label": lbl, "missing": missing_counts[k]}
+             for k, lbl, _ in METADATA_FIELDS),
+            key=lambda x: -x["missing"],
+        ),
+        "complete_count": sum(1 for x in result if x["filled"] == len(keys)),
+    }
+    summary["pct"] = round(summary["filled"] / summary["possible"] * 100) if summary["possible"] else 0
+    return result, summary
+
+
 def stats_summary():
     db = get_db()
     total_bottles = db.execute("SELECT COUNT(*) AS c FROM fragrances WHERE is_wishlist = 0").fetchone()["c"]
@@ -2957,6 +3059,30 @@ def stats():
         temp_coldest=_temp_split[0],
         temp_warmest=_temp_split[1],
         running_low=stats_running_low(),
+    )
+
+
+@app.route("/metadata")
+@login_required
+def metadata():
+    """A completeness matrix: which fragrances are missing which data.
+
+    Admin-only rather than public — it's a maintenance to-do list for the
+    person filling the collection in, not something a visitor benefits from.
+    """
+    include_wishlist = request.args.get("wishlist") == "1"
+    fragrances, summary = get_metadata_completeness(include_wishlist=include_wishlist)
+    only_incomplete = request.args.get("incomplete") == "1"
+    if only_incomplete:
+        fragrances = [f for f in fragrances if f["filled"] < f["total"]]
+    return render_template(
+        "metadata.html",
+        fragrances=fragrances,
+        summary=summary,
+        field_defs=METADATA_FIELDS,
+        groups=METADATA_GROUPS,
+        include_wishlist=include_wishlist,
+        only_incomplete=only_incomplete,
     )
 
 

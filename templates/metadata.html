@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Metadata — The Scent Ledger{% endblock %}
+{% block breadcrumbs %}<span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Metadata</span>{% endblock %}
+{% block content %}
+
+<div class="hero" style="padding-bottom:24px;margin-bottom:24px;">
+  <h1 style="font-size:clamp(26px,3vw,36px);">Metadata</h1>
+  <p>What's filled in and what still needs attention, across every fragrance. Least complete first.</p>
+</div>
+
+<div class="meta-summary">
+  <div class="meta-summary-figure">
+    <div class="meta-summary-pct">{{ summary.pct }}%</div>
+    <div class="meta-summary-label">
+      {{ summary.filled }} of {{ summary.possible }} fields filled
+      across {{ summary.fragrance_count }} fragrance{{ 's' if summary.fragrance_count != 1 else '' }}
+    </div>
+  </div>
+  <div class="meta-summary-bar">
+    <div class="meta-summary-fill" style="width:{{ summary.pct }}%;"></div>
+  </div>
+</div>
+
+{% set gaps = summary.missing_by_field | selectattr('missing') | list %}
+{% if gaps %}
+  <div class="meta-gaps">
+    <div class="section-label">Biggest Gaps</div>
+    <div class="meta-gap-list">
+      {% for m in gaps[:8] %}
+        <span class="meta-gap-chip">{{ m.label }}<span class="meta-gap-count">{{ m.missing }}</span></span>
+      {% endfor %}
+    </div>
+    <div class="field-note">Counts are how many fragrances are missing that field.</div>
+  </div>
+{% endif %}
+
+<div class="meta-filters">
+  <a class="tag-chip {{ 'active' if only_incomplete else '' }}"
+     href="{{ url_for('metadata', incomplete='1' if not only_incomplete else None, wishlist='1' if include_wishlist else None) }}">
+    {{ 'Showing incomplete only' if only_incomplete else 'Show incomplete only' }}
+  </a>
+  <a class="tag-chip {{ 'active' if include_wishlist else '' }}"
+     href="{{ url_for('metadata', wishlist='1' if not include_wishlist else None, incomplete='1' if only_incomplete else None) }}">
+    {{ 'Including wishlist' if include_wishlist else 'Include wishlist' }}
+  </a>
+</div>
+
+{% if fragrances|length == 0 %}
+  <div class="empty-state">
+    <h2>Nothing to show</h2>
+    <p>{{ 'Everything is fully filled in.' if only_incomplete else 'No fragrances yet.' }}</p>
+  </div>
+{% else %}
+  <div class="meta-list">
+    {% for f in fragrances %}
+      <div class="meta-card">
+        <div class="meta-card-head">
+          <div class="meta-card-thumb {{ 'no-bg' if f['image_filename'] and f['image_filename'].endswith('.png') else '' }}">
+            {% if f['image_filename'] %}
+              <img src="{{ url_for('static', filename='uploads/' + f['image_filename']) }}" alt="">
+            {% else %}
+              <div class="ph">NO IMAGE</div>
+            {% endif %}
+          </div>
+          <div class="meta-card-id">
+            <div class="meta-card-brand">{{ f['brand'] }}{% if f['is_wishlist'] %} · wishlist{% endif %}</div>
+            <a class="meta-card-name" href="{{ url_for('detail', fragrance_id=f['id']) }}">{{ f['name'] }}</a>
+            <div class="meta-card-score">
+              <span class="meta-card-count">{{ f['filled'] }}/{{ f['total'] }}</span>
+              <span class="meta-card-track"><span class="meta-card-fill" style="width:{{ f['pct'] }}%;"></span></span>
+            </div>
+          </div>
+          <a class="btn-ghost meta-card-edit" href="{{ url_for('edit', fragrance_id=f['id']) }}">Edit</a>
+        </div>
+
+        <div class="meta-groups">
+          {% for group in groups %}
+            <div class="meta-group">
+              <div class="meta-group-label">{{ group }}</div>
+              {% for key, label, grp in field_defs if grp == group %}
+                <div class="meta-row {{ 'yes' if f['fields'][key] else 'no' }}">
+                  <span class="meta-mark">{{ '✓' if f['fields'][key] else '✗' }}</span>
+                  <span class="meta-field">{{ label }}</span>
+                </div>
+              {% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% endblock %}
