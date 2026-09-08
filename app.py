@@ -609,11 +609,20 @@ def _find_possible_duplicate(db, brand, name, exclude_id=None):
     — catches things like "Baccarat Rouge 540" vs "Baccarat Rouge 540
     Extrait" as well as exact re-entries. Never blocks a save, just flags it
     — plenty of collections have genuinely distinct bottles with very
-    similar names (different concentrations, flankers, etc.)."""
+    similar names (different concentrations, flankers, etc.).
+
+    Wishlist entries are deliberately not matched against. Wishlisting
+    something and later adding the real bottle is the normal flow, not a
+    mistake, so warning about it would fire on exactly the case the
+    wishlist exists to support.
+    """
     norm_name = name.strip().lower()
     if not norm_name:
         return None
-    query = "SELECT id, brand, name FROM fragrances WHERE LOWER(TRIM(brand)) = LOWER(TRIM(?))"
+    query = (
+        "SELECT id, brand, name FROM fragrances "
+        "WHERE LOWER(TRIM(brand)) = LOWER(TRIM(?)) AND is_wishlist = 0"
+    )
     params = [brand]
     if exclude_id is not None:
         query += " AND id != ?"
