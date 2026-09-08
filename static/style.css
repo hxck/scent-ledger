@@ -1665,3 +1665,5 @@ a.bar-label:hover{color:var(--sapphire-bright);}
   .meta-card-head{flex-wrap:wrap;}
   .meta-card-edit{width:100%;text-align:center;}
 }
+.meta-row.na .meta-mark{color:var(--ink-faint);opacity:0.7;}
+.meta-row.na .meta-field{color:var(--ink-faint);opacity:0.6;}

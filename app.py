@@ -1071,6 +1071,13 @@ METADATA_FIELDS = [
 
 METADATA_GROUPS = ["Identity", "Character", "Ownership", "Personal"]
 
+# Fields that can't apply to a gifted fragrance: you didn't pay for it, and
+# there's no purchase to date. These render as a neutral "—" rather than a red
+# ✗, and are dropped from that fragrance's denominator entirely — otherwise a
+# gift could never reach 100%, and it would pad the "biggest gaps" counts with
+# fields nobody can ever fill.
+GIFT_NA_FIELDS = {"paid", "purchase_date"}
+
 
 def get_metadata_completeness(include_wishlist=False):
     """Which fields each fragrance has filled in, for the /metadata view.
@@ -1090,7 +1097,7 @@ def get_metadata_completeness(include_wishlist=False):
     db = get_db()
     rows = db.execute(
         f"""
-        SELECT f.id, f.brand, f.name, f.image_filename, f.is_wishlist,
+        SELECT f.id, f.brand, f.name, f.image_filename, f.is_wishlist, f.is_gift,
                (f.image_filename IS NOT NULL AND TRIM(f.image_filename) != '')   AS has_photo,
                (f.fragrantica_url IS NOT NULL AND TRIM(f.fragrantica_url) != '') AS has_fragrantica,
                (f.description IS NOT NULL AND TRIM(f.description) != '')         AS has_description,
@@ -1118,12 +1125,18 @@ def get_metadata_completeness(include_wishlist=False):
     result, missing_counts = [], {k: 0 for k in keys}
     for r in rows:
         d = dict(r)
-        d["fields"] = {k: bool(r[f"has_{k}"]) for k in keys}
-        d["filled"] = sum(d["fields"].values())
-        d["total"] = len(keys)
-        d["pct"] = round(d["filled"] / d["total"] * 100)
-        for k, present in d["fields"].items():
-            if not present:
+        na = GIFT_NA_FIELDS if r["is_gift"] else set()
+        # Three states, not two: "na" is genuinely different from "no" —
+        # nothing is owed, so it must not count against the fragrance.
+        d["fields"] = {
+            k: "na" if k in na else ("yes" if r[f"has_{k}"] else "no") for k in keys
+        }
+        applicable = [k for k in keys if k not in na]
+        d["filled"] = sum(1 for k in applicable if d["fields"][k] == "yes")
+        d["total"] = len(applicable)
+        d["pct"] = round(d["filled"] / d["total"] * 100) if d["total"] else 100
+        for k in applicable:
+            if d["fields"][k] == "no":
                 missing_counts[k] += 1
         result.append(d)
 
@@ -1135,13 +1148,13 @@ def get_metadata_completeness(include_wishlist=False):
         "fragrance_count": len(result),
         "field_count": len(keys),
         "filled": sum(x["filled"] for x in result),
-        "possible": len(result) * len(keys),
+        "possible": sum(x["total"] for x in result),
         "missing_by_field": sorted(
             ({"key": k, "label": lbl, "missing": missing_counts[k]}
              for k, lbl, _ in METADATA_FIELDS),
             key=lambda x: -x["missing"],
         ),
-        "complete_count": sum(1 for x in result if x["filled"] == len(keys)),
+        "complete_count": sum(1 for x in result if x["filled"] == x["total"]),
     }
     summary["pct"] = round(summary["filled"] / summary["possible"] * 100) if summary["possible"] else 0
     return result, summary

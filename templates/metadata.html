@@ -63,7 +63,9 @@
             {% endif %}
           </div>
           <div class="meta-card-id">
-            <div class="meta-card-brand">{{ f['brand'] }}{% if f['is_wishlist'] %} · wishlist{% endif %}</div>
+            <div class="meta-card-brand">
+              {{ f['brand'] }}{% if f['is_wishlist'] %} · wishlist{% endif %}{% if f['is_gift'] %} · 🎁 gift{% endif %}
+            </div>
             <a class="meta-card-name" href="{{ url_for('detail', fragrance_id=f['id']) }}">{{ f['name'] }}</a>
             <div class="meta-card-score">
               <span class="meta-card-count">{{ f['filled'] }}/{{ f['total'] }}</span>
@@ -78,8 +80,10 @@
             <div class="meta-group">
               <div class="meta-group-label">{{ group }}</div>
               {% for key, label, grp in field_defs if grp == group %}
-                <div class="meta-row {{ 'yes' if f['fields'][key] else 'no' }}">
-                  <span class="meta-mark">{{ '✓' if f['fields'][key] else '✗' }}</span>
+                {% set state = f['fields'][key] %}
+                <div class="meta-row {{ state }}"
+                     {% if state == 'na' %}title="Not applicable — this was a gift"{% endif %}>
+                  <span class="meta-mark">{{ '✓' if state == 'yes' else ('✗' if state == 'no' else '—') }}</span>
                   <span class="meta-field">{{ label }}</span>
                 </div>
               {% endfor %}
