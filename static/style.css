@@ -1694,3 +1694,15 @@ a.bar-label:hover{color:var(--sapphire-bright);}
 }
 .col-sort:hover{color:var(--sapphire-bright);}
 .sort-arrow{font-size:9px;line-height:1;}
+
+/* Given-away bottles stay in the table (pinned last by the query) but read as
+   clearly not-on-the-shelf. Kept clickable and legible rather than greyed to
+   the point of being unreadable — the point is separation, not burial. */
+.collection-table tr.gave-away{opacity:0.45;}
+.collection-table tr.gave-away:hover{opacity:0.75;background:var(--bg-glass);}
+.gave-away-tag{
+  margin-left:8px;font-family:'JetBrains Mono',monospace;font-size:9px;
+  letter-spacing:0.08em;text-transform:uppercase;color:var(--rose);
+  border:1px solid rgba(208,138,125,0.4);border-radius:20px;padding:2px 7px;
+  white-space:nowrap;
+}

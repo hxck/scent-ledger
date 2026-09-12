@@ -6,8 +6,9 @@
 <div class="hero" style="padding-bottom:24px;margin-bottom:24px;">
   <h1 style="font-size:clamp(26px,3vw,36px);">Collection</h1>
   <p>
-    {{ fragrances|length }} fragrance{{ 's' if fragrances|length != 1 else '' }} on the shelf.
-    Click a column heading to sort. Wishlist items and anything given away are left out.
+    {{ on_shelf_count }} fragrance{{ 's' if on_shelf_count != 1 else '' }} on the shelf{% if gave_away_count %},
+    plus {{ gave_away_count }} given away (dimmed, always last){% endif %}.
+    Click a column heading to sort. Wishlist items are listed separately.
   </p>
 </div>
 
@@ -44,7 +45,11 @@
       </thead>
       <tbody>
         {% for f in fragrances %}
-          <tr>
+          {# Given-away bottles are pinned below everything by the query and
+             dimmed here, so they stay reachable without being mistaken for
+             what's currently on the shelf. #}
+          <tr class="{{ 'gave-away' if f['gave_away'] else '' }}"
+              {% if f['gave_away'] %}title="Given away"{% endif %}>
             <td class="col-num">{{ loop.index }}</td>
             <td class="col-img">
               <div class="collection-thumb {{ 'no-bg' if f['image_filename'] and f['image_filename'].endswith('.png') else '' }}">
@@ -67,6 +72,7 @@
             <td class="col-house">{{ f['brand'] }}</td>
             <td class="col-name">
               <a href="{{ url_for('detail', fragrance_id=f['id']) }}">{{ f['name'] }}</a>
+              {% if f['gave_away'] %}<span class="gave-away-tag">gave away</span>{% endif %}
             </td>
             <td class="col-original">
               {% if f['subname'] %}

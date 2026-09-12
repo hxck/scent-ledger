@@ -691,11 +691,14 @@ COLLECTION_DEFAULT_SORT = "house"
 def get_collection_table(sort="house", direction="asc"):
     """Rows for the /collection table.
 
-    "Owned" here means not on the wishlist and not given away — the two
-    exclusions that define the physical collection. `currently_owned` is
-    deliberately not filtered on: a bottle you've finished is still part of
-    the collection you've assembled, and hiding it would make the table
-    disagree with the sidebar count.
+    Wishlist items are excluded — they aren't part of the collection yet.
+    Given-away bottles ARE included, but pinned below everything else no
+    matter which column is being sorted, and flagged so the template can dim
+    them. They're still part of your history and you need a route to their
+    pages; they just shouldn't be interleaved with what's on the shelf.
+
+    `currently_owned` is deliberately not filtered on: a bottle you've
+    finished is still part of the collection you've assembled.
 
     Empty values always sort last regardless of direction. Flipping to
     descending to see your best-rated bottles shouldn't first hand you a
@@ -717,10 +720,10 @@ def get_collection_table(sort="house", direction="asc"):
     db = get_db()
     rows = db.execute(
         f"""
-        SELECT f.id, f.brand, f.name, f.subname, f.image_filename, f.rating
+        SELECT f.id, f.brand, f.name, f.subname, f.image_filename, f.rating, f.gave_away
         FROM fragrances f
-        WHERE f.is_wishlist = 0 AND f.gave_away = 0
-        ORDER BY {blank}, {col}{collate} {direction}, {tiebreak}
+        WHERE f.is_wishlist = 0
+        ORDER BY f.gave_away, {blank}, {col}{collate} {direction}, {tiebreak}
         """
     ).fetchall()
     return [dict(r) for r in rows]
@@ -3107,9 +3110,13 @@ def collection():
     if sort not in COLLECTION_SORTS:
         sort, direction = COLLECTION_DEFAULT_SORT, "asc"
     direction = "desc" if direction == "desc" else "asc"
+    fragrances = get_collection_table(sort, direction)
+    gave_away_count = sum(1 for f in fragrances if f["gave_away"])
     return render_template(
         "collection.html",
-        fragrances=get_collection_table(sort, direction),
+        fragrances=fragrances,
+        on_shelf_count=len(fragrances) - gave_away_count,
+        gave_away_count=gave_away_count,
         sort=sort, direction=direction,
     )
 
