@@ -172,16 +172,8 @@
       View Collection Stats
     </a>
 
-    {% if sidebar_total_unfiltered == 0 %}
+    {% if sidebar_total == 0 %}
       <div class="sidebar-empty">{{ 'Your collection is empty. Use “+ Add” in the header to catalog your first bottle.' if is_admin else 'This collection is empty.' }}</div>
-    {% else %}
-      {# The full fragrance list lives on /collection now — it stopped being
-         browsable from a sidebar as the collection grew. This toggle stays
-         because it still governs what the home-page grid shows. #}
-      <a href="{{ url_for('toggle_owned_filter', next=request.path) }}" class="owned-toggle">
-        <span class="owned-toggle-switch {{ 'on' if sidebar_owned_only else '' }}"><span class="owned-toggle-dot"></span></span>
-        <span class="owned-toggle-label">{{ 'Showing: Owned only' if sidebar_owned_only else 'Showing: All' }}</span>
-      </a>
     {% endif %}
   </aside>
 

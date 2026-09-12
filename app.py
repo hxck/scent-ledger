@@ -547,17 +547,12 @@ def sidebar_counts():
         "SELECT COUNT(*) AS c FROM fragrances WHERE is_wishlist = 0"
     ).fetchone()["c"]
 
-    query = "SELECT COUNT(*) AS c FROM fragrances WHERE is_wishlist = 0"
-    if session.get("sidebar_owned_only"):
-        query += " AND currently_owned = 1"
-    total = db.execute(query).fetchone()["c"]
-
     # Matches get_collection_table() exactly, so the sidebar badge can't
     # disagree with the number of rows the page actually renders.
     collection_total = db.execute(
         "SELECT COUNT(*) AS c FROM fragrances WHERE is_wishlist = 0 AND gave_away = 0"
     ).fetchone()["c"]
-    return total, total_unfiltered, collection_total
+    return total_unfiltered, collection_total
 
 
 def get_all_fragrances_grouped_by_brand():
@@ -641,7 +636,7 @@ def _find_similar_fragrances(fragrance_id, limit=4):
 
 @app.context_processor
 def inject_sidebar():
-    total, total_unfiltered, collection_total = sidebar_counts()
+    sidebar_total, collection_total = sidebar_counts()
     wishlist_count = get_db().execute(
         "SELECT COUNT(*) AS c FROM fragrances WHERE is_wishlist = 1"
     ).fetchone()["c"]
@@ -673,16 +668,27 @@ def inject_sidebar():
         scraps_count_query += " WHERE is_private = 0"
     scraps_count = get_db().execute(scraps_count_query).fetchone()["c"]
     return {
-        "sidebar_total": total, "collection_total": collection_total,
-        "wishlist_count": wishlist_count, "sidebar_owned_only": bool(session.get("sidebar_owned_only")),
-        "sidebar_total_unfiltered": total_unfiltered, "missing_notes_count": missing_notes_count,
+        "sidebar_total": sidebar_total, "collection_total": collection_total,
+        "wishlist_count": wishlist_count, "missing_notes_count": missing_notes_count,
         "shelves_count": shelves_count, "all_shelves_for_bulk": all_shelves_for_bulk,
         "todays_frag": todays_frag, "todays_frag_label": todays_frag_label,
         "scraps_count": scraps_count,
     }
 
 
-def get_collection_table():
+# Whitelisted sort columns for /collection. Mapping to SQL here (rather than
+# interpolating whatever arrives in the query string) keeps the ORDER BY
+# injection-proof while still letting the headers be plain links.
+COLLECTION_SORTS = {
+    "house":    "f.brand",
+    "name":     "f.name",
+    "rating":   "f.rating",
+    "original": "f.subname",
+}
+COLLECTION_DEFAULT_SORT = "house"
+
+
+def get_collection_table(sort="house", direction="asc"):
     """Rows for the /collection table.
 
     "Owned" here means not on the wishlist and not given away — the two
@@ -690,29 +696,43 @@ def get_collection_table():
     deliberately not filtered on: a bottle you've finished is still part of
     the collection you've assembled, and hiding it would make the table
     disagree with the sidebar count.
+
+    Empty values always sort last regardless of direction. Flipping to
+    descending to see your best-rated bottles shouldn't first hand you a
+    screen of unrated ones.
     """
+    if sort not in COLLECTION_SORTS:
+        sort = COLLECTION_DEFAULT_SORT
+    direction = "DESC" if str(direction).lower() == "desc" else "ASC"
+    col = COLLECTION_SORTS[sort]
+
+    collate = "" if sort == "rating" else " COLLATE NOCASE"
+    blank = f"CASE WHEN {col} IS NULL OR TRIM({col}) = '' THEN 1 ELSE 0 END" \
+        if sort != "rating" else f"CASE WHEN {col} IS NULL THEN 1 ELSE 0 END"
+
+    # House and name both fall back to the other, so equal values stay in a
+    # stable, readable order rather than whatever SQLite happens to return.
+    tiebreak = "f.name COLLATE NOCASE" if sort != "name" else "f.brand COLLATE NOCASE"
+
     db = get_db()
     rows = db.execute(
-        """
-        SELECT id, brand, name, subname, image_filename, rating
-        FROM fragrances
-        WHERE is_wishlist = 0 AND gave_away = 0
-        ORDER BY brand COLLATE NOCASE, name COLLATE NOCASE
+        f"""
+        SELECT f.id, f.brand, f.name, f.subname, f.image_filename, f.rating
+        FROM fragrances f
+        WHERE f.is_wishlist = 0 AND f.gave_away = 0
+        ORDER BY {blank}, {col}{collate} {direction}, {tiebreak}
         """
     ).fetchall()
     return [dict(r) for r in rows]
 
 
-def get_all_fragrances_light(wishlist=False, respect_owned_filter=False):
+def get_all_fragrances_light(wishlist=False):
     """Used for the home grid, search results, and the wishlist page:
     brand/name/subname/thumb, plus a combined `tags` list used for search
     matching only (never rendered directly on a card) — this includes both
     real tags AND every note on the fragrance, so search-by-note works the
     same way search-by-tag does. The collection and the wishlist are
     mutually exclusive sets — this never mixes them.
-    respect_owned_filter=True additionally applies the sidebar's "owned only"
-    session preference (only meaningful for the non-wishlist collection) —
-    opt-in per caller so this stays in sync with the sidebar specifically
     where that's wanted, without silently changing other listings."""
     db = get_db()
     query = """
@@ -727,8 +747,6 @@ def get_all_fragrances_light(wishlist=False, respect_owned_filter=False):
         LEFT JOIN seasons s ON s.fragrance_id = f.id
         WHERE f.is_wishlist = ?
     """
-    if respect_owned_filter and not wishlist and session.get("sidebar_owned_only"):
-        query += " AND f.currently_owned = 1"
     query += " GROUP BY f.id ORDER BY f.brand COLLATE NOCASE, f.name COLLATE NOCASE"
     rows = db.execute(query, (1 if wishlist else 0,)).fetchall()
     result = []
@@ -1839,7 +1857,7 @@ def healthz():
 
 @app.route("/")
 def home():
-    fragrances = get_all_fragrances_light(respect_owned_filter=True)
+    fragrances = get_all_fragrances_light()
     return render_template("index.html", fragrances=fragrances)
 
 
@@ -2954,17 +2972,6 @@ def wishlist():
     return render_template("wishlist.html", fragrances=fragrances)
 
 
-@app.route("/toggle-owned-filter")
-def toggle_owned_filter():
-    """Flips the sidebar's "owned only" display preference. Session-based, so
-    it works for any visitor (not gated behind admin login) and persists
-    across navigation without needing a query param on every link. Only
-    affects the sidebar's brand list — home, search, and stats always show
-    the full (non-wishlist) collection regardless."""
-    session["sidebar_owned_only"] = not session.get("sidebar_owned_only", False)
-    return redirect(_safe_next_url(request.args.get("next", "")))
-
-
 @app.route("/search")
 def search():
     q = request.args.get("q", "").strip().lower()
@@ -3095,7 +3102,16 @@ def metadata():
 
 @app.route("/collection")
 def collection():
-    return render_template("collection.html", fragrances=get_collection_table())
+    sort = request.args.get("sort", COLLECTION_DEFAULT_SORT)
+    direction = request.args.get("dir", "asc")
+    if sort not in COLLECTION_SORTS:
+        sort, direction = COLLECTION_DEFAULT_SORT, "asc"
+    direction = "desc" if direction == "desc" else "asc"
+    return render_template(
+        "collection.html",
+        fragrances=get_collection_table(sort, direction),
+        sort=sort, direction=direction,
+    )
 
 
 @app.route("/scraps")

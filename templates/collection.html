@@ -6,8 +6,8 @@
 <div class="hero" style="padding-bottom:24px;margin-bottom:24px;">
   <h1 style="font-size:clamp(26px,3vw,36px);">Collection</h1>
   <p>
-    {{ fragrances|length }} fragrance{{ 's' if fragrances|length != 1 else '' }} on the shelf,
-    by house. Wishlist items and anything given away are left out.
+    {{ fragrances|length }} fragrance{{ 's' if fragrances|length != 1 else '' }} on the shelf.
+    Click a column heading to sort. Wishlist items and anything given away are left out.
   </p>
 </div>
 
@@ -20,13 +20,26 @@
   <div class="collection-table-wrap">
     <table class="collection-table">
       <thead>
+        {# Each sortable header is a link that toggles direction when it's
+           already the active column, so sort state lives in the URL and
+           survives a refresh, a bookmark or a shared link. #}
+        {% macro sort_th(key, label, extra_class='') %}
+          {% set is_active = sort == key %}
+          {% set next_dir = 'desc' if (is_active and direction == 'asc') else 'asc' %}
+          <th class="{{ extra_class }} {{ 'sorted' if is_active else '' }}">
+            <a class="col-sort" href="{{ url_for('collection', sort=key, dir=next_dir) }}"
+               title="Sort by {{ label }} {{ 'descending' if next_dir == 'desc' else 'ascending' }}">
+              {{ label }}<span class="sort-arrow">{{ ('▾' if direction == 'desc' else '▴') if is_active else '' }}</span>
+            </a>
+          </th>
+        {% endmacro %}
         <tr>
           <th class="col-num">#</th>
           <th class="col-img"></th>
-          <th class="col-rating">Rating</th>
-          <th>House</th>
-          <th>Name</th>
-          <th>Original</th>
+          {{ sort_th('rating', 'Rating', 'col-rating') }}
+          {{ sort_th('house', 'House') }}
+          {{ sort_th('name', 'Name') }}
+          {{ sort_th('original', 'Original') }}
         </tr>
       </thead>
       <tbody>
