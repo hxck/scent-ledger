@@ -534,62 +534,35 @@ def _get_todays_fragrance_pick():
     return dict(row), label
 
 
-def _season_color_group(season_csv):
-    """Classifies a fragrance's seasons for sidebar color-coding:
-    - "warm" (Spring and/or Summer only) — creamy red-orange
-    - "cool" (Fall and/or Winter only) — chilly blue
-    - "year-round" (has at least one from each side) — green-yellow
-    - None (no seasons set at all) — no color, we don't know anything about it
+def sidebar_counts():
+    """The two counts the sidebar still needs: how many fragrances match the
+    current "owned only" preference, and the unfiltered total.
+
+    This used to also build a brand-grouped list for the sidebar, but that
+    list moved to /collection — a sidebar stopped being a sensible place to
+    browse the whole collection once it grew past a screenful.
     """
-    seasons = set((season_csv or "").split(","))
-    seasons.discard("")
-    has_warm = bool(seasons & {"Spring", "Summer"})
-    has_cool = bool(seasons & {"Fall", "Winter"})
-    if has_warm and has_cool:
-        return "year-round"
-    if has_warm:
-        return "warm"
-    if has_cool:
-        return "cool"
-    return None
-
-
-def sidebar_groups():
-    """Brand -> [ {id, name, season_group} ] for the sidebar, alphabetical.
-    Wishlist items live only on the Wishlist page — they don't show here
-    until "graduated" into the collection via the Edit page toggle. Respects
-    the "owned only" display preference (session-based, works for any
-    visitor, doesn't affect the home page, search, or stats — those always
-    show the full collection). Returns the unfiltered total too, so the UI
-    can tell "collection is genuinely empty" apart from "the current filter
-    just matches nothing"."""
     db = get_db()
     total_unfiltered = db.execute(
         "SELECT COUNT(*) AS c FROM fragrances WHERE is_wishlist = 0"
     ).fetchone()["c"]
 
-    query = """
-        SELECT f.id, f.brand, f.name, GROUP_CONCAT(DISTINCT s.season) AS season_csv
-        FROM fragrances f
-        LEFT JOIN seasons s ON s.fragrance_id = f.id
-        WHERE f.is_wishlist = 0
-    """
+    query = "SELECT COUNT(*) AS c FROM fragrances WHERE is_wishlist = 0"
     if session.get("sidebar_owned_only"):
-        query += " AND f.currently_owned = 1"
-    query += " GROUP BY f.id ORDER BY f.brand COLLATE NOCASE, f.name COLLATE NOCASE"
-    rows = db.execute(query).fetchall()
+        query += " AND currently_owned = 1"
+    total = db.execute(query).fetchone()["c"]
 
-    groups = {}
-    for r in rows:
-        item = dict(r)
-        item["season_group"] = _season_color_group(item.pop("season_csv"))
-        groups.setdefault(item["brand"], []).append(item)
-    return sorted(groups.items(), key=lambda kv: kv[0].lower()), len(rows), total_unfiltered
+    # Matches get_collection_table() exactly, so the sidebar badge can't
+    # disagree with the number of rows the page actually renders.
+    collection_total = db.execute(
+        "SELECT COUNT(*) AS c FROM fragrances WHERE is_wishlist = 0 AND gave_away = 0"
+    ).fetchone()["c"]
+    return total, total_unfiltered, collection_total
 
 
 def get_all_fragrances_grouped_by_brand():
     """All non-wishlist fragrances grouped by brand — used for the shelf
-    "add fragrances" list. Same shape as sidebar_groups() but without the
+    "add fragrances" list. Grouped by house, but without the
     owned-only filter, since a shelf is an independent grouping, not tied to
     what you currently own."""
     db = get_db()
@@ -668,7 +641,7 @@ def _find_similar_fragrances(fragrance_id, limit=4):
 
 @app.context_processor
 def inject_sidebar():
-    groups, total, total_unfiltered = sidebar_groups()
+    total, total_unfiltered, collection_total = sidebar_counts()
     wishlist_count = get_db().execute(
         "SELECT COUNT(*) AS c FROM fragrances WHERE is_wishlist = 1"
     ).fetchone()["c"]
@@ -700,13 +673,34 @@ def inject_sidebar():
         scraps_count_query += " WHERE is_private = 0"
     scraps_count = get_db().execute(scraps_count_query).fetchone()["c"]
     return {
-        "sidebar_groups": groups, "sidebar_total": total, "sidebar_brand_count": len(groups),
+        "sidebar_total": total, "collection_total": collection_total,
         "wishlist_count": wishlist_count, "sidebar_owned_only": bool(session.get("sidebar_owned_only")),
         "sidebar_total_unfiltered": total_unfiltered, "missing_notes_count": missing_notes_count,
         "shelves_count": shelves_count, "all_shelves_for_bulk": all_shelves_for_bulk,
         "todays_frag": todays_frag, "todays_frag_label": todays_frag_label,
         "scraps_count": scraps_count,
     }
+
+
+def get_collection_table():
+    """Rows for the /collection table.
+
+    "Owned" here means not on the wishlist and not given away — the two
+    exclusions that define the physical collection. `currently_owned` is
+    deliberately not filtered on: a bottle you've finished is still part of
+    the collection you've assembled, and hiding it would make the table
+    disagree with the sidebar count.
+    """
+    db = get_db()
+    rows = db.execute(
+        """
+        SELECT id, brand, name, subname, image_filename, rating
+        FROM fragrances
+        WHERE is_wishlist = 0 AND gave_away = 0
+        ORDER BY brand COLLATE NOCASE, name COLLATE NOCASE
+        """
+    ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def get_all_fragrances_light(wishlist=False, respect_owned_filter=False):
@@ -3097,6 +3091,11 @@ def metadata():
         include_wishlist=include_wishlist,
         only_incomplete=only_incomplete,
     )
+
+
+@app.route("/collection")
+def collection():
+    return render_template("collection.html", fragrances=get_collection_table())
 
 
 @app.route("/scraps")

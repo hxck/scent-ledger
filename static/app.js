@@ -37,17 +37,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-// Fragrance list within the sidebar has its own, separate collapse — the nav
-// links and "owned only" toggle stay visible either way.
-document.addEventListener('DOMContentLoaded', () => {
-  const listToggle = document.getElementById('sidebarListToggle');
-  if (!listToggle) return;
-  listToggle.addEventListener('click', () => {
-    const collapsed = document.documentElement.classList.toggle('sidebar-list-collapsed');
-    localStorage.setItem('sidebarListCollapsed', collapsed);
-  });
-});
-
 // Chip-style input for notes (top/middle/base) and tags.
 // Keeps a hidden <input> in sync with a comma-separated list, backing a plain HTML form submit.
 function initChipField(hiddenId, containerId, textInputId, initialValues) {

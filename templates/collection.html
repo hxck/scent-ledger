@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Collection — The Scent Ledger{% endblock %}
+{% block breadcrumbs %}<span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Collection</span>{% endblock %}
+{% block content %}
+
+<div class="hero" style="padding-bottom:24px;margin-bottom:24px;">
+  <h1 style="font-size:clamp(26px,3vw,36px);">Collection</h1>
+  <p>
+    {{ fragrances|length }} fragrance{{ 's' if fragrances|length != 1 else '' }} on the shelf,
+    by house. Wishlist items and anything given away are left out.
+  </p>
+</div>
+
+{% if fragrances|length == 0 %}
+  <div class="empty-state">
+    <h2>Nothing here yet</h2>
+    <p>{{ 'Use “+ Add” in the header to catalog your first bottle.' if is_admin else 'This collection is empty.' }}</p>
+  </div>
+{% else %}
+  <div class="collection-table-wrap">
+    <table class="collection-table">
+      <thead>
+        <tr>
+          <th class="col-num">#</th>
+          <th class="col-img"></th>
+          <th class="col-rating">Rating</th>
+          <th>House</th>
+          <th>Name</th>
+          <th>Original</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in fragrances %}
+          <tr>
+            <td class="col-num">{{ loop.index }}</td>
+            <td class="col-img">
+              <div class="collection-thumb {{ 'no-bg' if f['image_filename'] and f['image_filename'].endswith('.png') else '' }}">
+                {% if f['image_filename'] %}
+                  <img src="{{ url_for('static', filename='uploads/' + f['image_filename']) }}" alt="" loading="lazy">
+                {% else %}
+                  <div class="ph">—</div>
+                {% endif %}
+              </div>
+            </td>
+            <td class="col-rating">
+              {% if f['rating'] %}
+                <span class="collection-stars" title="{{ f['rating'] }} out of 5">
+                  {% for i in range(1, 6) %}<span class="star {{ 'filled' if i <= f['rating'] else '' }}">★</span>{% endfor %}
+                </span>
+              {% else %}
+                <span class="collection-none">—</span>
+              {% endif %}
+            </td>
+            <td class="col-house">{{ f['brand'] }}</td>
+            <td class="col-name">
+              <a href="{{ url_for('detail', fragrance_id=f['id']) }}">{{ f['name'] }}</a>
+            </td>
+            <td class="col-original">
+              {% if f['subname'] %}
+                {# Same target as the fragrance page: you rarely own the original,
+                   so there's nothing local to link to — search Fragrantica instead. #}
+                <a href="https://www.fragrantica.com/search/?query={{ f['subname'] | urlencode }}"
+                   target="_blank" rel="noopener noreferrer">{{ f['subname'] }} ↗</a>
+              {% else %}
+                <span class="collection-none">—</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+
+{% endblock %}
