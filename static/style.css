@@ -1435,6 +1435,7 @@ a.bar-label:hover{color:var(--sapphire-bright);}
 .container-row{
   border:1px solid var(--line);border-radius:var(--radius);
   background:var(--bg-glass);padding:11px 13px;display:flex;flex-direction:column;gap:7px;
+  min-width:0;
 }
 .container-row.finished{opacity:0.55;}
 .container-row-head{display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
@@ -1468,17 +1469,26 @@ a.bar-label:hover{color:var(--sapphire-bright);}
 .container-add-panel{display:none;}
 .container-add-panel.open{display:block;}
 .container-form{margin-top:10px;}
-.container-field-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;}
-.container-field-grid label{display:flex;flex-direction:column;gap:3px;}
+/* minmax(0,1fr) rather than 1fr: a plain 1fr is minmax(auto,1fr), and `auto`
+   refuses to shrink below an item's min-content width. Form controls carry an
+   intrinsic width (number spinners and date pickers especially), so without
+   this the columns — and the inputs inside them — push straight out of the
+   container card. width:100% + min-width:0 makes each control fit its cell
+   instead of its own preferred size. */
+.container-field-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:9px;}
+.container-field-grid label{display:flex;flex-direction:column;gap:3px;min-width:0;}
 .container-field-grid label > span{
   font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.08em;
   text-transform:uppercase;color:var(--ink-faint);
 }
 .container-field-grid label > span em{text-transform:none;letter-spacing:0;font-style:normal;opacity:0.7;}
 .container-field-grid input, .container-field-grid select{
+  width:100%;min-width:0;max-width:100%;
   background:var(--bg-card);border:1px solid var(--line-strong);color:var(--ink);
   padding:6px 8px;border-radius:4px;font-size:12px;font-family:'Inter',sans-serif;outline:none;
 }
+/* The checkbox is the one control that must NOT stretch to fill its cell. */
+.container-field-check input[type=checkbox]{width:auto;flex-shrink:0;}
 .container-field-grid input:focus, .container-field-grid select:focus{border-color:var(--sapphire);}
 .container-field-wide{grid-column:1 / -1;}
 .container-field-check{grid-column:1 / -1;flex-direction:row !important;align-items:center;gap:7px !important;}
@@ -1518,16 +1528,18 @@ a.bar-label:hover{color:var(--sapphire-bright);}
 }
 .wear-context summary::-webkit-details-marker{display:none;}
 .wear-context summary:hover{color:var(--sapphire-bright);}
-.wear-context-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px;}
-.wear-context-grid label{display:flex;flex-direction:column;gap:3px;}
+.wear-context-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin-top:9px;}
+.wear-context-grid label{display:flex;flex-direction:column;gap:3px;min-width:0;}
 .wear-context-grid label > span{
   font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.08em;
   text-transform:uppercase;color:var(--ink-faint);
 }
 .wear-context-grid input, .wear-context-grid select{
+  width:100%;min-width:0;max-width:100%;
   background:var(--bg-card);border:1px solid var(--line-strong);color:var(--ink);
   padding:6px 8px;border-radius:4px;font-size:12px;font-family:'Inter',sans-serif;outline:none;
 }
+.wear-context-check input[type=checkbox]{width:auto;flex-shrink:0;}
 .wear-context-grid input:focus, .wear-context-grid select:focus{border-color:var(--sapphire);}
 .wear-context-wide{grid-column:1 / -1;}
 .wear-context-check{grid-column:1 / -1;flex-direction:row !important;align-items:center;gap:7px !important;}
