@@ -53,7 +53,12 @@
 {% else %}
   <div class="meta-list">
     {% for f in fragrances %}
-      <div class="meta-card">
+      {# A fully-filled fragrance has nothing left to action, so it collapses
+         to just its identity and score. Keyed on filled == total rather than
+         a hardcoded 17: a gifted bottle is complete at 15/15, since price
+         paid and purchase date don't apply to it. #}
+      {% set complete = f['filled'] == f['total'] %}
+      <div class="meta-card{{ ' complete' if complete else '' }}">
         <div class="meta-card-head">
           <div class="meta-card-thumb {{ 'no-bg' if f['image_filename'] and f['image_filename'].endswith('.png') else '' }}">
             {% if f['image_filename'] %}
@@ -69,12 +74,15 @@
             <a class="meta-card-name" href="{{ url_for('detail', fragrance_id=f['id']) }}">{{ f['name'] }}</a>
             <div class="meta-card-score">
               <span class="meta-card-count">{{ f['filled'] }}/{{ f['total'] }}</span>
-              <span class="meta-card-track"><span class="meta-card-fill" style="width:{{ f['pct'] }}%;"></span></span>
+              {% if not complete %}
+                <span class="meta-card-track"><span class="meta-card-fill" style="width:{{ f['pct'] }}%;"></span></span>
+              {% endif %}
             </div>
           </div>
           <a class="btn-ghost meta-card-edit" href="{{ url_for('edit', fragrance_id=f['id']) }}">Edit</a>
         </div>
 
+        {% if not complete %}
         <div class="meta-groups">
           {% for group in groups %}
             <div class="meta-group">
@@ -90,6 +98,7 @@
             </div>
           {% endfor %}
         </div>
+        {% endif %}
       </div>
     {% endfor %}
   </div>

@@ -1718,3 +1718,13 @@ a.bar-label:hover{color:var(--sapphire-bright);}
   border:1px solid rgba(208,138,125,0.4);border-radius:20px;padding:2px 7px;
   white-space:nowrap;
 }
+
+/* Fully-filled fragrances collapse to a single compact line: there's nothing
+   left to act on, so the field grid is dropped and the card tightens up. The
+   green count is the only signal needed. */
+.meta-card.complete{padding:10px 14px;}
+.meta-card.complete .meta-card-head{margin-bottom:0;}
+.meta-card.complete .meta-card-thumb{width:34px;height:45px;}
+.meta-card.complete .meta-card-name{font-size:14.5px;}
+.meta-card.complete .meta-card-score{margin-top:3px;}
+.meta-card.complete .meta-card-count{color:var(--cyan);}
