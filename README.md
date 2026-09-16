@@ -21,16 +21,19 @@ this project.
 <details>
 <summary>Screenshots</summary>
 
-![App Interface](./screenshots/home1.png)
-![App Interface](./screenshots/wishlist1.png)
-![App Interface](./screenshots/search1.png)
-![App Interface](./screenshots/shelves1.png)
-![App Interface](./screenshots/shelf1.png)
-![App Interface](./screenshots/notes1.png)
-![App Interface](./screenshots/stats1.png)
-![App Interface](./screenshots/bottlepage1.png)
-![App Interface](./screenshots/random1.png)
-![App Interface](./screenshots/addform1.png)
+![App Interface](./screenshots/1.png)
+![App Interface](./screenshots/2.png)
+![App Interface](./screenshots/3.png)
+![App Interface](./screenshots/4.png)
+![App Interface](./screenshots/5.png)
+![App Interface](./screenshots/6.png)
+![App Interface](./screenshots/7.png)
+![App Interface](./screenshots/8.png)
+![App Interface](./screenshots/9.png)
+![App Interface](./screenshots/10.png)
+![App Interface](./screenshots/11.png)
+![App Interface](./screenshots/12.png)
+![App Interface](./screenshots/13.png)
 
 </details>
 
