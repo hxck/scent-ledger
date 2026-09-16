@@ -2663,6 +2663,15 @@ def _decrement_container_fill(db, container_id, sprays):
     return ""
 
 
+def _container_redirect(fragrance_id):
+    """Containers can be managed from the fragrance page or from the Edit
+    form. Send the user back where they came from instead of always bouncing
+    them to the detail page mid-edit."""
+    if request.form.get("next") == "edit":
+        return url_for("edit", fragrance_id=fragrance_id)
+    return url_for("detail", fragrance_id=fragrance_id)
+
+
 def _container_form_values(form):
     ctype = (form.get("container_type", "") or "bottle").strip()
     if ctype not in CONTAINER_TYPES:
@@ -2701,7 +2710,7 @@ def add_container(fragrance_id):
     )
     db.commit()
     flash(f"Added a {CONTAINER_TYPE_LABELS[v['container_type']].lower()}.", "success")
-    return redirect(url_for("detail", fragrance_id=fragrance_id))
+    return redirect(_container_redirect(fragrance_id))
 
 
 @app.route("/containers/<int:container_id>/edit", methods=["POST"])
@@ -2724,7 +2733,7 @@ def edit_container(container_id):
     )
     db.commit()
     flash("Container updated.", "success")
-    return redirect(url_for("detail", fragrance_id=row["fragrance_id"]))
+    return redirect(_container_redirect(row["fragrance_id"]))
 
 
 @app.route("/containers/<int:container_id>/delete", methods=["POST"])
@@ -2737,7 +2746,7 @@ def delete_container(container_id):
     db.execute("DELETE FROM containers WHERE id = ?", (container_id,))
     db.commit()
     flash("Container removed. Its wear history was kept.", "success")
-    return redirect(url_for("detail", fragrance_id=row["fragrance_id"]))
+    return redirect(_container_redirect(row["fragrance_id"]))
 
 
 @app.route("/wear-log/<int:entry_id>/delete", methods=["POST"])
@@ -3101,6 +3110,138 @@ def metadata():
         include_wishlist=include_wishlist,
         only_incomplete=only_incomplete,
     )
+
+
+# Fields offered on /bulk-edit. Declared once here: the form renders from
+# this list and the update whitelists against it, so a hand-crafted POST can
+# never reach a column that isn't on it.
+#   kind   — how the value is parsed and rendered
+#   target — whether the value lives on the fragrance or on its containers
+BULK_EDIT_FIELDS = [
+    ("batch_code",        "Batch Code",      "text",     "container"),
+    ("purchase_date",     "Purchase Date",   "date",     "container"),
+    ("rating",            "Rating",          "rating",   "fragrance"),
+    ("longevity_rating",  "Longevity",       "rating",   "fragrance"),
+    ("sillage_rating",    "Sillage",         "rating",   "fragrance"),
+    ("projection_rating", "Projection",      "rating",   "fragrance"),
+    ("daynight",          "Day / Night",     "daynight", "fragrance"),
+    ("is_discontinued",   "Discontinued",    "bool",     "fragrance"),
+]
+
+
+def get_bulk_edit_rows():
+    """Owned fragrances plus a short summary of each one's containers, so you
+    can see what's already filled before choosing what to overwrite."""
+    db = get_db()
+    rows = db.execute(
+        """
+        SELECT f.id, f.brand, f.name, f.image_filename, f.rating, f.daynight,
+               f.is_discontinued, f.gave_away
+        FROM fragrances f
+        WHERE f.is_wishlist = 0
+        ORDER BY f.gave_away, f.brand COLLATE NOCASE, f.name COLLATE NOCASE
+        """
+    ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["containers"] = [
+            dict(c) for c in db.execute(
+                "SELECT container_type, size_ml, batch_code, purchase_date "
+                "FROM containers WHERE fragrance_id = ? ORDER BY id", (r["id"],)
+            ).fetchall()
+        ]
+        out.append(d)
+    return out
+
+
+def _bulk_parse(kind, raw):
+    """Returns (ok, value). ok is False when the value is unusable, which is
+    treated as "don't touch this field" rather than "write a null"."""
+    raw = (raw or "").strip()
+    if kind == "text":
+        return (True, raw) if raw else (False, None)
+    if kind == "date":
+        if not raw:
+            return False, None
+        try:
+            datetime.strptime(raw, "%Y-%m-%d")
+        except ValueError:
+            return False, None
+        return True, raw
+    if kind == "rating":
+        v = _parse_optional_int(raw)
+        return (True, v) if v is not None and 1 <= v <= 5 else (False, None)
+    if kind == "daynight":
+        return (True, raw) if raw in DAYNIGHT_CHOICES else (False, None)
+    if kind == "bool":
+        return True, 1 if raw == "1" else 0
+    return False, None
+
+
+@app.route("/bulk-edit", methods=["GET", "POST"])
+@login_required
+def bulk_edit():
+    """Apply the same value to a field across many fragrances at once.
+
+    Only fields explicitly ticked are written, so leaving an input blank is
+    never mistaken for "clear this". Container-level fields default to
+    filling blanks only, which is the common case (stamping a placeholder
+    batch code on everything you don't know) and avoids quietly destroying
+    codes you'd already recorded.
+    """
+    if request.method == "GET":
+        return render_template(
+            "bulk_edit.html", rows=get_bulk_edit_rows(), fields=BULK_EDIT_FIELDS,
+            daynight_choices=DAYNIGHT_CHOICES,
+        )
+
+    ids = request.form.getlist("fragrance_ids", type=int)
+    only_empty = bool(request.form.get("only_empty"))
+    if not ids:
+        flash("Select at least one fragrance first.", "error")
+        return redirect(url_for("bulk_edit"))
+
+    frag_updates, container_updates = {}, {}
+    for key, label, kind, target in BULK_EDIT_FIELDS:
+        if not request.form.get(f"apply_{key}"):
+            continue
+        ok, value = _bulk_parse(kind, request.form.get(key))
+        if not ok:
+            flash(f"Skipped {label}: that value wasn't usable.", "warning")
+            continue
+        (container_updates if target == "container" else frag_updates)[key] = value
+
+    if not frag_updates and not container_updates:
+        flash("Tick the fields you want to change, then apply.", "error")
+        return redirect(url_for("bulk_edit"))
+
+    db = get_db()
+    placeholders = ",".join("?" * len(ids))
+
+    for key, value in frag_updates.items():
+        db.execute(
+            f"UPDATE fragrances SET {key} = ? WHERE id IN ({placeholders})",
+            (value, *ids),
+        )
+
+    touched_containers = 0
+    for key, value in container_updates.items():
+        clause = f" AND ({key} IS NULL OR TRIM({key}) = '')" if only_empty else ""
+        cur = db.execute(
+            f"UPDATE containers SET {key} = ? WHERE fragrance_id IN ({placeholders}){clause}",
+            (value, *ids),
+        )
+        touched_containers += cur.rowcount
+    db.commit()
+
+    parts = []
+    if frag_updates:
+        parts.append(f"{len(frag_updates)} field(s) on {len(ids)} fragrance(s)")
+    if container_updates:
+        parts.append(f"{len(container_updates)} field(s) on {touched_containers} container(s)")
+    flash("Updated " + " and ".join(parts) + ".", "success")
+    return redirect(url_for("bulk_edit"))
 
 
 @app.route("/collection")

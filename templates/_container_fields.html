@@ -1,0 +1,43 @@
+{# Shared by the fragrance detail page and the Edit form, so the two can't
+   drift apart. `c` is None when adding a new container. #}
+{% macro container_fields(c) %}
+  {% set c = c or {} %}
+  <div class="container-field-grid">
+    <label>
+      <span>Type</span>
+      <select name="container_type">
+        {% for t, label in [('bottle','Bottle'), ('decant','Decant'), ('sample','Sample'), ('travel','Travel Spray')] %}
+          <option value="{{ t }}" {{ 'selected' if c.get('container_type') == t else '' }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      <span>Size (ml)</span>
+      <input type="number" name="size_ml" step="0.1" min="0" placeholder="e.g. 5" value="{{ c.get('size_ml') or '' }}">
+    </label>
+    <label>
+      <span>Fill %</span>
+      <input type="number" name="fill_level" step="1" min="0" max="100" value="{{ c.get('fill_level', 100) }}">
+    </label>
+    <label>
+      <span>Paid</span>
+      <input type="number" name="purchase_price" step="0.01" min="0" placeholder="e.g. 24.00" value="{{ c.get('purchase_price') if c.get('purchase_price') is not none else '' }}">
+    </label>
+    <label>
+      <span>Bought</span>
+      <input type="date" name="purchase_date" value="{{ c.get('purchase_date') or '' }}">
+    </label>
+    <label>
+      <span>Batch code</span>
+      <input type="text" name="batch_code" placeholder="e.g. 3M01" value="{{ c.get('batch_code') or '' }}">
+    </label>
+    <label class="container-field-wide">
+      <span>Label <em>(optional)</em></span>
+      <input type="text" name="label" placeholder="e.g. gym bag decant" value="{{ c.get('label') or '' }}">
+    </label>
+    <label class="container-field-check">
+      <input type="checkbox" name="is_finished" value="1" {{ 'checked' if c.get('is_finished') else '' }}>
+      <span>Finished / used up</span>
+    </label>
+  </div>
+{% endmacro %}

@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Bulk Edit — The Scent Ledger{% endblock %}
+{% block breadcrumbs %}<span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Bulk Edit</span>{% endblock %}
+{% block content %}
+
+<div class="hero" style="padding-bottom:24px;margin-bottom:24px;">
+  <h1 style="font-size:clamp(26px,3vw,36px);">Bulk Edit</h1>
+  <p>Set the same value across several fragrances at once. Only the fields you tick are changed.</p>
+</div>
+
+<form method="post" action="{{ url_for('bulk_edit') }}">
+
+  <div class="bulk-panel">
+    <div class="section-label">What to change</div>
+    <div class="bulk-field-list">
+      {% for key, label, kind, target in fields %}
+        <label class="bulk-field">
+          <input type="checkbox" name="apply_{{ key }}" value="1" class="bulk-apply">
+          <span class="bulk-field-label">
+            {{ label }}
+            {% if target == 'container' %}<span class="bulk-target">container</span>{% endif %}
+          </span>
+          {% if kind == 'text' %}
+            <input type="text" name="{{ key }}" placeholder="e.g. N/A">
+          {% elif kind == 'date' %}
+            <input type="date" name="{{ key }}">
+          {% elif kind == 'rating' %}
+            <select name="{{ key }}">
+              <option value="">—</option>
+              {% for i in range(1, 6) %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
+            </select>
+          {% elif kind == 'daynight' %}
+            <select name="{{ key }}">
+              <option value="">—</option>
+              {% for d in daynight_choices %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+            </select>
+          {% elif kind == 'bool' %}
+            <select name="{{ key }}">
+              <option value="0">No</option>
+              <option value="1">Yes</option>
+            </select>
+          {% endif %}
+        </label>
+      {% endfor %}
+    </div>
+
+    <label class="pill-check bulk-only-empty">
+      <input type="checkbox" name="only_empty" value="1" checked>
+      <span>Only fill container fields that are currently empty</span>
+    </label>
+    <div class="field-note">
+      Leave this on to stamp a placeholder onto everything that's missing one without
+      overwriting batch codes you've already recorded. Untick it to overwrite everything
+      on the selected fragrances.
+    </div>
+  </div>
+
+  <div class="bulk-select-bar">
+    <span class="section-label" style="margin:0;">Apply to</span>
+    <div class="bulk-select-actions">
+      <button type="button" class="btn-ghost" onclick="bulkEditSelectAll(true)">Select all</button>
+      <button type="button" class="btn-ghost" onclick="bulkEditSelectAll(false)">Select none</button>
+      <span class="bulk-selected-count" id="bulkEditCount">0 selected</span>
+    </div>
+  </div>
+
+  {% if rows|length == 0 %}
+    <div class="empty-state"><h2>Nothing to edit</h2><p>No fragrances in the collection yet.</p></div>
+  {% else %}
+    <div class="collection-table-wrap">
+      <table class="collection-table bulk-edit-table">
+        <tbody>
+          {% for f in rows %}
+            <tr class="{{ 'gave-away' if f['gave_away'] else '' }}">
+              <td class="col-check">
+                <input type="checkbox" name="fragrance_ids" value="{{ f['id'] }}"
+                       class="bulk-edit-check" onchange="bulkEditCount()">
+              </td>
+              <td class="col-img">
+                <div class="collection-thumb {{ 'no-bg' if f['image_filename'] and f['image_filename'].endswith('.png') else '' }}">
+                  {% if f['image_filename'] %}
+                    <img src="{{ url_for('static', filename='uploads/' + f['image_filename']) }}" alt="" loading="lazy">
+                  {% else %}<div class="ph">—</div>{% endif %}
+                </div>
+              </td>
+              <td class="col-house">{{ f['brand'] }}</td>
+              <td class="col-name">
+                <a href="{{ url_for('detail', fragrance_id=f['id']) }}" target="_blank" rel="noopener">{{ f['name'] }}</a>
+                {% if f['gave_away'] %}<span class="gave-away-tag">gave away</span>{% endif %}
+              </td>
+              <td class="col-current">
+                {% if f['containers'] %}
+                  {% for c in f['containers'] %}
+                    <div class="bulk-current">
+                      {{ c['container_type'] }}{% if c['size_ml'] %} {{ c['size_ml'] | trim_decimal }}ml{% endif %} ·
+                      batch {{ c['batch_code'] if c['batch_code'] else '—' }} ·
+                      bought {{ c['purchase_date'] if c['purchase_date'] else '—' }}
+                    </div>
+                  {% endfor %}
+                {% else %}
+                  <div class="bulk-current">no containers</div>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn-primary">Apply to selected</button>
+      <a class="btn-ghost" href="{{ url_for('collection') }}" style="display:inline-block;">Cancel</a>
+    </div>
+  {% endif %}
+</form>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function bulkEditCount() {
+    const n = document.querySelectorAll('.bulk-edit-check:checked').length;
+    document.getElementById('bulkEditCount').textContent = n + ' selected';
+  }
+  function bulkEditSelectAll(on) {
+    document.querySelectorAll('.bulk-edit-check').forEach((c) => { c.checked = on; });
+    bulkEditCount();
+  }
+  // Ticking a value implies you want it applied — saves a second click, and
+  // avoids the common mistake of filling a box and wondering why nothing changed.
+  document.querySelectorAll('.bulk-field input[type=text], .bulk-field input[type=date], .bulk-field select')
+    .forEach((input) => {
+      input.addEventListener('input', () => {
+        if (input.value) input.closest('.bulk-field').querySelector('.bulk-apply').checked = true;
+      });
+    });
+  bulkEditCount();
+</script>
+{% endblock %}

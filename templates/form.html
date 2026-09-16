@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% set fd = f or {} %}
 {% set notes = fd.get('notes', {}) %}
+{% from "_container_fields.html" import container_fields %}
 {% block title %}{{ 'Edit Fragrance' if mode == 'edit' else 'Add a Fragrance' }} — The Scent Ledger{% endblock %}
 
 {% block breadcrumbs %}
@@ -277,9 +278,7 @@
             <label>Bottles, Decants &amp; Samples</label>
             <div class="field-note">
               Size, fill level, price paid, purchase date, and batch code live on each
-              individual container now. Manage them under <strong>Your Stash</strong> on
-              <a href="{{ url_for('detail', fragrance_id=fd['id']) }}">this fragrance's page</a>,
-              where you can also add a second bottle or a decant without overwriting the first.
+              individual container — see <a href="#containers">section 5 below</a>.
             </div>
           </div>
         {% endif %}
@@ -335,6 +334,65 @@
       <a class="btn-ghost" href="{{ url_for('detail', fragrance_id=fd['id']) if mode == 'edit' else url_for('home') }}" style="display:inline-block;">Cancel</a>
     </div>
   </form>
+
+  {# Deliberately outside the form above: each container needs its own form,
+     and nesting one form inside another is invalid HTML — browsers drop the
+     inner one, so the container saves would silently do nothing. Each posts
+     next=edit so it returns here rather than to the fragrance page. #}
+  {% if mode == 'edit' %}
+    <div class="form-section container-section" id="containers">
+      <div class="form-section-header">
+        <span class="form-section-number">5</span>
+        <div>
+          <div class="form-section-title">Bottles, Decants &amp; Samples</div>
+          <div class="form-section-desc">
+            Each container has its own size, fill level, price, purchase date and batch code.
+            Saved separately from the details above.
+          </div>
+        </div>
+      </div>
+      <div class="form-section-body">
+        {% for c in fd.get('containers', []) %}
+          <div class="container-row {{ 'finished' if c['is_finished'] else '' }}">
+            <div class="container-row-head">
+              <span class="container-type-badge type-{{ c['container_type'] }}">{{ c['type_label'] }}</span>
+              {% if c['size_ml'] %}<span class="container-size">{{ c['size_ml'] | trim_decimal }}ml</span>{% endif %}
+              {% if c['label'] %}<span class="container-label">{{ c['label'] }}</span>{% endif %}
+              {% if c['is_finished'] %}<span class="container-finished-tag">finished</span>{% endif %}
+            </div>
+            <form method="post" action="{{ url_for('edit_container', container_id=c['id']) }}" class="container-form">
+              <input type="hidden" name="next" value="edit">
+              {{ container_fields(c) }}
+              <div class="container-form-actions">
+                <button type="submit" class="btn-ghost">Save Container</button>
+              </div>
+            </form>
+            <form method="post" action="{{ url_for('delete_container', container_id=c['id']) }}"
+                  onsubmit="return confirm('Remove this container? Wear history is kept.');">
+              <input type="hidden" name="next" value="edit">
+              <button type="submit" class="btn-ghost danger container-delete">Remove container</button>
+            </form>
+          </div>
+        {% else %}
+          <div class="containers-empty">No bottle, decant, or sample recorded yet.</div>
+        {% endfor %}
+
+        <div class="containers-header" style="margin-top:14px;">
+          <span class="section-label" style="margin:0;">Add another</span>
+          <button type="button" class="container-add-toggle" onclick="toggleAddContainer()">+ Add</button>
+        </div>
+        <div class="container-add-panel" id="addContainerPanel">
+          <form method="post" action="{{ url_for('add_container', fragrance_id=fd['id']) }}" class="container-form">
+            <input type="hidden" name="next" value="edit">
+            {{ container_fields(None) }}
+            <div class="container-form-actions">
+              <button type="submit" class="btn-ghost">Add Container</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
 </div>
 
 {% endblock %}
