@@ -13,7 +13,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from datetime import datetime, timedelta
+import calendar as calendar_mod
+from datetime import datetime, timedelta, date as date_cls
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pathlib import Path
 
@@ -2570,6 +2571,78 @@ def delete_shelf(shelf_id):
     return redirect(url_for("shelves_list"))
 
 
+def _app_tz():
+    """The configured display timezone, falling back to UTC on a bad value."""
+    name = _get_setting("timezone", "Etc/UTC") or "Etc/UTC"
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        return ZoneInfo("UTC")
+
+
+def _local_date_to_utc_stamp(date_str):
+    """A YYYY-MM-DD picked in the local calendar -> the UTC timestamp stored
+    in wear_log.
+
+    Anchored at local noon rather than midnight on purpose: midnight is the
+    value most likely to land on the adjacent day once converted to UTC, and
+    it's also the hour a DST jump can skip entirely. Noon round-trips back to
+    the same local date in every zone.
+    """
+    try:
+        d = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return None
+    local_noon = datetime(d.year, d.month, d.day, 12, 0, 0, tzinfo=_app_tz())
+    return local_noon.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _create_wear_entry(db, fragrance_id, form, worn_at=None):
+    """Insert one wear-log row from the shared 'add details' field set.
+
+    Used by both the button on a fragrance page and the Log page, so the two
+    can't drift apart. `worn_at` is a UTC stamp for a back-dated entry;
+    omitted means now.
+
+    Returns a message fragment about container depletion, or "".
+    """
+    occasion = (form.get("occasion", "") or "").strip() or None
+    weather_summary = (form.get("weather_summary", "") or "").strip() or None
+    wear_note = (form.get("wear_note", "") or "").strip() or None
+    complimented = 1 if form.get("complimented") else 0
+    container_id = _parse_optional_int(form.get("container_id"))
+    sprays = _parse_optional_int(form.get("sprays"))
+    temp_f = _parse_optional_float(form.get("weather_temp_f"))
+    longevity_hours = _parse_optional_float(form.get("longevity_hours"))
+
+    # Only accept a container that actually belongs to this fragrance —
+    # a hand-crafted POST shouldn't be able to drain someone else's bottle.
+    if container_id is not None:
+        owns = db.execute(
+            "SELECT id FROM containers WHERE id = ? AND fragrance_id = ?",
+            (container_id, fragrance_id),
+        ).fetchone()
+        if owns is None:
+            container_id = None
+
+    cols = ["fragrance_id", "container_id", "occasion", "weather_temp_f", "weather_summary",
+            "sprays", "longevity_hours", "complimented", "wear_note"]
+    vals = [fragrance_id, container_id, occasion, temp_f, weather_summary,
+            sprays, longevity_hours, complimented, wear_note]
+    if worn_at:
+        cols.append("worn_at")
+        vals.append(worn_at)
+
+    db.execute(
+        f"INSERT INTO wear_log ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+        vals,
+    )
+
+    if container_id is not None:
+        return _decrement_container_fill(db, container_id, sprays or SPRAYS_PER_WEAR)
+    return ""
+
+
 @app.route("/fragrance/<int:fragrance_id>/wear", methods=["POST"])
 @login_required
 def log_wear(fragrance_id):
@@ -2578,41 +2651,9 @@ def log_wear(fragrance_id):
     if frag is None:
         abort(404)
 
-    # Every field here is optional — posting the bare form (the one-click
+    # Every field is optional — posting the bare form (the one-click
     # "I Wore This Today" button) still works exactly as it did before.
-    occasion = (request.form.get("occasion", "") or "").strip() or None
-    weather_summary = (request.form.get("weather_summary", "") or "").strip() or None
-    wear_note = (request.form.get("wear_note", "") or "").strip() or None
-    complimented = 1 if request.form.get("complimented") else 0
-    container_id = _parse_optional_int(request.form.get("container_id"))
-    sprays = _parse_optional_int(request.form.get("sprays"))
-    temp_f = _parse_optional_float(request.form.get("weather_temp_f"))
-    longevity_hours = _parse_optional_float(request.form.get("longevity_hours"))
-
-    # Only accept a container that actually belongs to this fragrance —
-    # a hand-crafted POST shouldn't be able to drain someone else's bottle.
-    if container_id is not None:
-        owns = db.execute(
-            "SELECT id, size_ml, fill_level FROM containers WHERE id = ? AND fragrance_id = ?",
-            (container_id, fragrance_id),
-        ).fetchone()
-        if owns is None:
-            container_id = None
-
-    db.execute(
-        """
-        INSERT INTO wear_log
-            (fragrance_id, container_id, occasion, weather_temp_f, weather_summary,
-             sprays, longevity_hours, complimented, wear_note)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (fragrance_id, container_id, occasion, temp_f, weather_summary,
-         sprays, longevity_hours, complimented, wear_note),
-    )
-
-    depleted_msg = ""
-    if container_id is not None:
-        depleted_msg = _decrement_container_fill(db, container_id, sprays or SPRAYS_PER_WEAR)
+    depleted_msg = _create_wear_entry(db, fragrance_id, request.form)
 
     _set_todays_fragrance(fragrance_id)
     db.commit()
@@ -3242,6 +3283,202 @@ def bulk_edit():
         parts.append(f"{len(container_updates)} field(s) on {touched_containers} container(s)")
     flash("Updated " + " and ".join(parts) + ".", "success")
     return redirect(url_for("bulk_edit"))
+
+
+def _wears_in_local_range(db, start_date, end_date):
+    """Wear-log rows whose *local* date falls in [start_date, end_date].
+
+    worn_at is stored in UTC, and the UTC offset shifts with DST, so the
+    grouping is done in Python against the configured zone rather than with a
+    fixed SQL offset. The UTC window is padded a day either side so entries
+    near midnight aren't missed.
+    """
+    tz = _app_tz()
+    pad_start = (start_date - timedelta(days=1)).strftime("%Y-%m-%d 00:00:00")
+    pad_end = (end_date + timedelta(days=1)).strftime("%Y-%m-%d 23:59:59")
+    rows = db.execute(
+        """
+        SELECT w.*, f.brand, f.name, f.image_filename
+        FROM wear_log w JOIN fragrances f ON f.id = w.fragrance_id
+        WHERE w.worn_at BETWEEN ? AND ?
+        ORDER BY w.worn_at DESC
+        """,
+        (pad_start, pad_end),
+    ).fetchall()
+    out = []
+    for r in rows:
+        try:
+            naive = datetime.strptime(r["worn_at"].split(".")[0], "%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError, AttributeError):
+            continue
+        local = naive.replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)
+        if start_date <= local.date() <= end_date:
+            d = dict(r)
+            d["local_date"] = local.date().isoformat()
+            d["local_time"] = local.strftime("%-I:%M %p")
+            out.append(d)
+    return out
+
+
+def _build_month_grid(year, month, counts, today, selected):
+    """A Sunday-first grid of weeks for the calendar, each cell carrying the
+    wear count for that day so the month shows activity at a glance."""
+    cal = calendar_mod.Calendar(firstweekday=6)
+    weeks = []
+    for week in cal.monthdatescalendar(year, month):
+        cells = []
+        for d in week:
+            iso = d.isoformat()
+            cells.append({
+                "date": iso,
+                "day": d.day,
+                "in_month": d.month == month,
+                "is_today": d == today,
+                "is_selected": iso == selected,
+                "count": counts.get(iso, 0),
+                "is_future": d > today,
+            })
+        weeks.append(cells)
+    return weeks
+
+
+@app.route("/log", methods=["GET", "POST"])
+@login_required
+def wear_log_page():
+    """Calendar-driven wear logging, for entries you didn't record on the day.
+
+    Everything a wear can carry is available here, and logging routes through
+    the same _create_wear_entry() the fragrance-page button uses, so container
+    depletion and every optional field behave identically.
+    """
+    db = get_db()
+    tz = _app_tz()
+    today = datetime.now(tz).date()
+
+    if request.method == "POST":
+        fragrance_id = _parse_optional_int(request.form.get("fragrance_id"))
+        date_str = (request.form.get("worn_date", "") or "").strip()
+        back_to = {"date": date_str} if date_str else {}
+
+        if not fragrance_id or db.execute(
+            "SELECT 1 FROM fragrances WHERE id = ?", (fragrance_id,)
+        ).fetchone() is None:
+            flash("Pick a fragrance first — start typing its name in the search box.", "error")
+            return redirect(url_for("wear_log_page", **back_to))
+
+        stamp = _local_date_to_utc_stamp(date_str)
+        if stamp is None:
+            flash("That date wasn't valid.", "error")
+            return redirect(url_for("wear_log_page"))
+        if datetime.strptime(date_str, "%Y-%m-%d").date() > today:
+            flash("You can't log a wear in the future.", "error")
+            return redirect(url_for("wear_log_page", **back_to))
+
+        depleted = _create_wear_entry(db, fragrance_id, request.form, worn_at=stamp)
+
+        # Only a wear logged for *today* should change the header's "Today's
+        # Fragrance" — back-filling last Tuesday must not claim to be what
+        # you're wearing right now.
+        if datetime.strptime(date_str, "%Y-%m-%d").date() == today:
+            _set_todays_fragrance(fragrance_id)
+
+        db.commit()
+        frag = db.execute("SELECT brand, name FROM fragrances WHERE id = ?", (fragrance_id,)).fetchone()
+        flash(f"Logged {frag['brand']} {frag['name']} for {date_str}." + depleted, "success")
+        return redirect(url_for("wear_log_page", date=date_str))
+
+    # --- GET ---
+    selected = (request.args.get("date", "") or "").strip()
+    try:
+        sel_date = datetime.strptime(selected, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        sel_date = today
+    selected = sel_date.isoformat()
+
+    try:
+        year, month = (int(p) for p in request.args.get("month", "").split("-"))
+        date_cls(year, month, 1)
+    except (ValueError, TypeError):
+        year, month = sel_date.year, sel_date.month
+
+    first = date_cls(year, month, 1)
+    last = date_cls(year, month, calendar_mod.monthrange(year, month)[1])
+    month_wears = _wears_in_local_range(db, first - timedelta(days=7), last + timedelta(days=7))
+    counts = {}
+    for w in month_wears:
+        counts[w["local_date"]] = counts.get(w["local_date"], 0) + 1
+
+    prev_month = (first - timedelta(days=1)).strftime("%Y-%m")
+    next_month = (last + timedelta(days=1)).strftime("%Y-%m")
+
+    day_wears = [w for w in month_wears if w["local_date"] == selected]
+    for w in day_wears:
+        w["container_label"] = None
+        if w["container_id"]:
+            c = db.execute(
+                "SELECT container_type, size_ml, label FROM containers WHERE id = ?",
+                (w["container_id"],),
+            ).fetchone()
+            if c:
+                w["container_label"] = CONTAINER_TYPE_LABELS.get(
+                    c["container_type"], c["container_type"]
+                ) + (f" {_trim_decimal(c['size_ml'])}ml" if c["size_ml"] else "")
+
+    return render_template(
+        "wear_log.html",
+        weeks=_build_month_grid(year, month, counts, today, selected),
+        month_label=first.strftime("%B %Y"),
+        prev_month=prev_month, next_month=next_month,
+        this_month=today.strftime("%Y-%m"),
+        selected=selected,
+        selected_label=sel_date.strftime("%A, %B %-d, %Y"),
+        selected_is_today=(sel_date == today),
+        day_wears=day_wears,
+        occasion_choices=["Work", "Casual", "Date", "Formal", "Gym", "Travel", "Home"],
+        month_total=len(month_wears),
+    )
+
+
+@app.route("/api/fragrance-search")
+@login_required
+def api_fragrance_search():
+    """Type-ahead for the Log page. Matches brand or name, owned fragrances
+    first, and returns each one's containers so the form can offer them
+    without a second round trip."""
+    q = (request.args.get("q", "") or "").strip()
+    if len(q) < 2:
+        return {"results": []}
+    like = f"%{q}%"
+    rows = get_db().execute(
+        """
+        SELECT id, brand, name, image_filename, is_wishlist, gave_away
+        FROM fragrances
+        WHERE brand LIKE ? COLLATE NOCASE OR name LIKE ? COLLATE NOCASE
+        ORDER BY is_wishlist, gave_away, brand COLLATE NOCASE, name COLLATE NOCASE
+        LIMIT 8
+        """,
+        (like, like),
+    ).fetchall()
+    out = []
+    for r in rows:
+        containers = [
+            {"id": c["id"],
+             "label": (CONTAINER_TYPE_LABELS.get(c["container_type"], c["container_type"])
+                       + (f" {_trim_decimal(c['size_ml'])}ml" if c["size_ml"] else "")
+                       + (f" ({c['label']})" if c["label"] else "")
+                       + f" — {c['fill_level']}% full")}
+            for c in get_db().execute(
+                "SELECT id, container_type, size_ml, label, fill_level FROM containers "
+                "WHERE fragrance_id = ? AND is_finished = 0 ORDER BY id", (r["id"],)
+            ).fetchall()
+        ]
+        out.append({
+            "id": r["id"], "brand": r["brand"], "name": r["name"],
+            "image": url_for("static", filename="uploads/" + r["image_filename"]) if r["image_filename"] else None,
+            "wishlist": bool(r["is_wishlist"]), "gave_away": bool(r["gave_away"]),
+            "containers": containers,
+        })
+    return {"results": out}
 
 
 @app.route("/collection")

@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% block title %}Log a Wear — The Scent Ledger{% endblock %}
+{% block breadcrumbs %}<span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Log</span>{% endblock %}
+{% block content %}
+
+<div class="hero" style="padding-bottom:24px;margin-bottom:24px;">
+  <h1 style="font-size:clamp(26px,3vw,36px);">Log a Wear</h1>
+  <p>Pick a fragrance, choose a day on the calendar, and fill in as much or as little as you like.</p>
+</div>
+
+<div class="log-search">
+  <label for="logSearch" class="section-label">Fragrance</label>
+  <div class="log-search-wrap">
+    <input type="text" id="logSearch" autocomplete="off" placeholder="Start typing a name or house…">
+    <div class="log-suggestions" id="logSuggestions"></div>
+  </div>
+  <div class="log-picked" id="logPicked" style="display:none;">
+    <img id="logPickedImg" alt="">
+    <div>
+      <div class="log-picked-brand" id="logPickedBrand"></div>
+      <div class="log-picked-name" id="logPickedName"></div>
+    </div>
+    <button type="button" class="btn-ghost" onclick="clearLogPick()">Change</button>
+  </div>
+</div>
+
+<div class="log-grid">
+  <div class="log-calendar">
+    <div class="log-cal-head">
+      <a class="log-cal-nav" href="{{ url_for('wear_log_page', month=prev_month, date=selected) }}" aria-label="Previous month">‹</a>
+      <div class="log-cal-title">{{ month_label }}<span class="log-cal-count">{{ month_total }} wear{{ 's' if month_total != 1 else '' }}</span></div>
+      <a class="log-cal-nav" href="{{ url_for('wear_log_page', month=next_month, date=selected) }}" aria-label="Next month">›</a>
+    </div>
+    <div class="log-cal-dows">
+      {% for d in ['S','M','T','W','T','F','S'] %}<span>{{ d }}</span>{% endfor %}
+    </div>
+    <div class="log-cal-grid">
+      {% for week in weeks %}
+        {% for c in week %}
+          {% if c.is_future %}
+            <span class="log-day future" title="Can't log a future date">{{ c.day }}</span>
+          {% else %}
+            <a class="log-day {{ 'out' if not c.in_month }} {{ 'today' if c.is_today }} {{ 'selected' if c.is_selected }}"
+               href="{{ url_for('wear_log_page', date=c.date, month=c.date[:7]) }}">
+              {{ c.day }}
+              {% if c.count %}<span class="log-day-dot">{{ c.count if c.count > 1 else '' }}</span>{% endif %}
+            </a>
+          {% endif %}
+        {% endfor %}
+      {% endfor %}
+    </div>
+    <a class="log-cal-today" href="{{ url_for('wear_log_page', month=this_month) }}">Jump to today</a>
+  </div>
+
+  <div class="log-detail">
+    <form method="post" action="{{ url_for('wear_log_page') }}" id="logForm">
+      <input type="hidden" name="fragrance_id" id="logFragranceId">
+      <input type="hidden" name="worn_date" value="{{ selected }}">
+
+      <div class="log-date-banner">
+        <span class="log-date-label">{{ selected_label }}</span>
+        {% if selected_is_today %}<span class="log-date-today">today</span>{% endif %}
+      </div>
+
+      <div class="wear-context-grid log-context-grid">
+        <label class="wear-context-wide">
+          <span>From which</span>
+          <select name="container_id" id="logContainer">
+            <option value="">— not specified —</option>
+          </select>
+        </label>
+        <label>
+          <span>Occasion</span>
+          <select name="occasion">
+            <option value="">—</option>
+            {% for o in occasion_choices %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>Sprays</span>
+          <input type="number" name="sprays" min="1" max="30" placeholder="6">
+        </label>
+        <label>
+          <span>Temp °F</span>
+          <input type="number" name="weather_temp_f" step="1" placeholder="72">
+        </label>
+        <label>
+          <span>Weather</span>
+          <input type="text" name="weather_summary" placeholder="humid">
+        </label>
+        <label>
+          <span>Lasted (hrs)</span>
+          <input type="number" name="longevity_hours" step="0.5" min="0" placeholder="8">
+        </label>
+        <label class="wear-context-check">
+          <input type="checkbox" name="complimented" value="1">
+          <span>Got a compliment</span>
+        </label>
+        <label class="wear-context-wide">
+          <span>Note</span>
+          <input type="text" name="wear_note" placeholder="anything worth remembering">
+        </label>
+      </div>
+
+      <div class="form-actions" style="margin-top:16px;">
+        <button type="submit" class="btn-primary" id="logSubmit" disabled>Log this wear</button>
+        <span class="log-hint" id="logHint">Pick a fragrance above first.</span>
+      </div>
+    </form>
+
+    <div class="log-existing">
+      <div class="section-label">Already logged that day</div>
+      {% if day_wears %}
+        {% for w in day_wears %}
+          <div class="log-entry">
+            <div class="log-entry-main">
+              <a href="{{ url_for('detail', fragrance_id=w['fragrance_id']) }}" class="log-entry-name">{{ w['brand'] }} {{ w['name'] }}</a>
+              <div class="log-entry-meta">
+                {{ w['local_time'] }}
+                {%- if w['container_label'] %} · {{ w['container_label'] }}{% endif -%}
+                {%- if w['occasion'] %} · {{ w['occasion'] }}{% endif -%}
+                {%- if w['sprays'] %} · {{ w['sprays'] }} sprays{% endif -%}
+                {%- if w['weather_temp_f'] is not none %} · {{ w['weather_temp_f'] | round | int }}°F{% endif -%}
+                {%- if w['longevity_hours'] %} · lasted {{ w['longevity_hours'] | trim_decimal }}h{% endif -%}
+                {%- if w['complimented'] %} · 💬 complimented{% endif -%}
+              </div>
+              {% if w['wear_note'] %}<div class="log-entry-note">{{ w['wear_note'] }}</div>{% endif %}
+            </div>
+            <form method="post" action="{{ url_for('delete_wear_entry', entry_id=w['id']) }}"
+                  onsubmit="return confirm('Remove this wear entry?');">
+              <button type="submit" class="wear-history-delete" title="Remove entry">×</button>
+            </form>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p class="log-empty">Nothing logged for this day yet.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const searchInput = document.getElementById('logSearch');
+  const suggestions = document.getElementById('logSuggestions');
+  const picked = document.getElementById('logPicked');
+  const containerSelect = document.getElementById('logContainer');
+  const submitBtn = document.getElementById('logSubmit');
+  const hint = document.getElementById('logHint');
+  let debounce;
+
+  function clearLogPick() {
+    document.getElementById('logFragranceId').value = '';
+    picked.style.display = 'none';
+    searchInput.parentElement.style.display = '';
+    searchInput.value = '';
+    searchInput.focus();
+    containerSelect.innerHTML = '<option value="">— not specified —</option>';
+    submitBtn.disabled = true;
+    hint.textContent = 'Pick a fragrance above first.';
+  }
+
+  function choose(r) {
+    document.getElementById('logFragranceId').value = r.id;
+    document.getElementById('logPickedBrand').textContent = r.brand;
+    document.getElementById('logPickedName').textContent = r.name;
+    const img = document.getElementById('logPickedImg');
+    if (r.image) { img.src = r.image; img.style.display = ''; } else { img.style.display = 'none'; }
+    picked.style.display = 'flex';
+    searchInput.parentElement.style.display = 'none';
+    suggestions.innerHTML = '';
+
+    // Offer this fragrance's containers so the wear can be attributed to the
+    // right bottle — that's what makes the fill level decrement correctly.
+    containerSelect.innerHTML = '<option value="">— not specified —</option>';
+    r.containers.forEach((c) => {
+      const o = document.createElement('option');
+      o.value = c.id; o.textContent = c.label;
+      containerSelect.appendChild(o);
+    });
+    submitBtn.disabled = false;
+    hint.textContent = '';
+  }
+
+  function render(results) {
+    suggestions.innerHTML = '';
+    if (!results.length) {
+      suggestions.innerHTML = '<div class="log-suggestion-empty">No matches</div>';
+      return;
+    }
+    results.forEach((r) => {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'log-suggestion';
+      const tag = r.wishlist ? ' <span class="log-sug-tag">wishlist</span>'
+                : (r.gave_away ? ' <span class="log-sug-tag">gave away</span>' : '');
+      el.innerHTML = '<span class="log-sug-brand">' + r.brand + '</span>'
+                   + '<span class="log-sug-name">' + r.name + '</span>' + tag;
+      el.addEventListener('click', () => choose(r));
+      suggestions.appendChild(el);
+    });
+  }
+
+  searchInput.addEventListener('input', () => {
+    clearTimeout(debounce);
+    const q = searchInput.value.trim();
+    if (q.length < 2) { suggestions.innerHTML = ''; return; }
+    debounce = setTimeout(() => {
+      fetch('{{ url_for("api_fragrance_search") }}?q=' + encodeURIComponent(q))
+        .then((r) => r.json())
+        .then((d) => render(d.results || []))
+        .catch(() => { suggestions.innerHTML = '<div class="log-suggestion-empty">Search failed</div>'; });
+    }, 180);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.log-search-wrap')) suggestions.innerHTML = '';
+  });
+</script>
+{% endblock %}

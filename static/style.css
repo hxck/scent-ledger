@@ -1780,3 +1780,133 @@ a.bar-label:hover{color:var(--sapphire-bright);}
   .bulk-field input[type=text], .bulk-field input[type=date], .bulk-field select{grid-column:2;}
   .bulk-edit-table .col-current{display:none;}
 }
+
+/* ---------- LOG PAGE ---------- */
+.log-search{margin-bottom:22px;max-width:520px;}
+.log-search-wrap{position:relative;}
+.log-search-wrap input{
+  width:100%;background:var(--bg-glass);border:1px solid var(--line-strong);color:var(--ink);
+  padding:11px 14px;border-radius:var(--radius);font-size:14px;font-family:'Inter',sans-serif;outline:none;
+  transition:border-color .15s, box-shadow .15s;
+}
+.log-search-wrap input:focus{border-color:var(--sapphire);box-shadow:0 0 0 3px var(--sapphire-glow-soft);}
+.log-suggestions{
+  position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:40;
+  background:var(--bg-elevated);border:1px solid var(--line-strong);border-radius:var(--radius);
+  box-shadow:var(--shadow);overflow:hidden;
+}
+.log-suggestions:empty{display:none;}
+.log-suggestion{
+  display:flex;align-items:baseline;gap:9px;width:100%;text-align:left;
+  background:none;border:none;color:var(--ink-dim);cursor:pointer;
+  padding:9px 13px;font-family:'Inter',sans-serif;font-size:13.5px;
+  transition:background .12s, color .12s;
+}
+.log-suggestion:hover{background:var(--sapphire-glow-soft);color:var(--ink);}
+.log-sug-brand{
+  font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.08em;
+  text-transform:uppercase;color:var(--gold);flex-shrink:0;
+}
+.log-sug-name{font-weight:600;color:var(--ink);}
+.log-sug-tag{
+  font-family:'JetBrains Mono',monospace;font-size:8.5px;text-transform:uppercase;
+  letter-spacing:0.08em;color:var(--rose);margin-left:auto;flex-shrink:0;
+}
+.log-suggestion-empty{padding:10px 13px;font-size:13px;color:var(--ink-faint);font-style:italic;}
+.log-picked{
+  display:flex;align-items:center;gap:13px;
+  background:var(--bg-glass);border:1px solid var(--sapphire);border-radius:var(--radius);padding:11px 14px;
+}
+.log-picked img{width:36px;height:48px;object-fit:cover;border-radius:4px;background:var(--sapphire-deep);}
+.log-picked-brand{
+  font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.1em;
+  text-transform:uppercase;color:var(--gold);
+}
+.log-picked-name{font-family:'Space Grotesk',sans-serif;font-size:15.5px;font-weight:600;color:var(--ink);}
+.log-picked > div{flex:1;min-width:0;}
+
+.log-grid{display:grid;grid-template-columns:300px minmax(0,1fr);gap:28px;align-items:start;}
+
+.log-calendar{
+  background:var(--bg-glass);border:1px solid var(--line-strong);
+  border-radius:var(--radius);padding:14px;
+}
+.log-cal-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;}
+.log-cal-title{
+  font-family:'Space Grotesk',sans-serif;font-size:14.5px;font-weight:600;color:var(--ink);
+  text-align:center;display:flex;flex-direction:column;
+}
+.log-cal-count{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--ink-faint);font-weight:400;}
+.log-cal-nav{
+  width:28px;height:28px;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  border:1px solid var(--line-strong);border-radius:var(--radius);color:var(--ink-dim);
+  font-size:16px;line-height:1;transition:border-color .15s,color .15s;
+}
+.log-cal-nav:hover{border-color:var(--sapphire);color:var(--sapphire-bright);}
+.log-cal-dows,.log-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;}
+.log-cal-dows{margin-bottom:5px;}
+.log-cal-dows span{
+  text-align:center;font-family:'JetBrains Mono',monospace;font-size:9px;
+  color:var(--ink-faint);letter-spacing:0.06em;
+}
+.log-day{
+  position:relative;aspect-ratio:1;display:flex;align-items:center;justify-content:center;
+  border-radius:4px;font-size:12.5px;color:var(--ink-dim);
+  border:1px solid transparent;transition:background .12s,border-color .12s,color .12s;
+}
+.log-day:hover{background:var(--sapphire-glow-soft);color:var(--ink);}
+.log-day.out{color:var(--ink-faint);opacity:0.45;}
+.log-day.future{color:var(--ink-faint);opacity:0.25;cursor:not-allowed;
+  aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:12.5px;}
+.log-day.today{border-color:var(--gold);color:var(--gold);}
+.log-day.selected{background:var(--sapphire);color:#fff;border-color:var(--sapphire);}
+.log-day-dot{
+  position:absolute;bottom:3px;left:50%;transform:translateX(-50%);
+  min-width:5px;height:5px;border-radius:20px;background:var(--cyan);
+  font-family:'JetBrains Mono',monospace;font-size:7px;line-height:5px;
+  color:var(--bg);padding:0 2px;
+}
+.log-day.selected .log-day-dot{background:#fff;color:var(--sapphire);}
+.log-cal-today{
+  display:block;text-align:center;margin-top:11px;font-family:'JetBrains Mono',monospace;
+  font-size:10px;letter-spacing:0.06em;color:var(--ink-faint);transition:color .15s;
+}
+.log-cal-today:hover{color:var(--sapphire-bright);}
+
+.log-date-banner{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
+.log-date-label{font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:600;color:var(--ink);}
+.log-date-today{
+  font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;
+  letter-spacing:0.08em;color:var(--gold);border:1px solid rgba(217,182,121,0.4);
+  border-radius:20px;padding:2px 8px;
+}
+.log-context-grid{margin-top:0;}
+.log-hint{font-size:12.5px;color:var(--ink-faint);align-self:center;}
+
+.log-existing{margin-top:28px;padding-top:20px;border-top:1px solid var(--line);}
+.log-entry{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+  padding:10px 0;border-bottom:1px solid var(--line);
+}
+.log-entry:last-child{border-bottom:none;}
+.log-entry-main{min-width:0;}
+.log-entry-name{font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;color:var(--ink);}
+.log-entry-name:hover{color:var(--sapphire-bright);}
+.log-entry-meta{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-faint);margin-top:3px;}
+.log-entry-note{font-size:12.5px;color:var(--ink-dim);margin-top:4px;font-style:italic;}
+.log-empty{font-size:13px;color:var(--ink-faint);font-style:italic;}
+
+@media (max-width:900px){
+  .log-grid{grid-template-columns:minmax(0,1fr);gap:22px;}
+  .log-calendar{max-width:340px;}
+}
+
+/* A disabled button previously looked identical to an active one — the Log
+   page's submit is disabled until a fragrance is picked, and without this it
+   read as clickable-but-broken. Applies app-wide. */
+.btn-primary:disabled, .btn-ghost:disabled{
+  opacity:0.4;cursor:not-allowed;transform:none;box-shadow:none;
+}
+.btn-primary:disabled:hover, .btn-ghost:disabled:hover{
+  transform:none;box-shadow:none;border-color:var(--line-strong);
+}

@@ -12,3 +12,4 @@ venv/
 .venv/
 README.md
 scent.sh
+screenshots/*
